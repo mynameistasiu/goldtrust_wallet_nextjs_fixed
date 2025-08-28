@@ -5,12 +5,11 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "export": "next build && next export",
     "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
-    "@capacitor/cli": "^7.4.3",
-    "@capacitor/core": "^7.4.3",
     "html2canvas": "^1.4.1",
     "jspdf": "^3.0.2",
     "next": "14.0.0",
