@@ -4,6 +4,8 @@ import Layout from '../components/Layout';
 import LogoHeader from '../components/LogoHeader';
 import { loadUser, loadBalance, saveBalance, saveTx } from '../utils/storage';
 import { formatNaira } from '../utils/format';
+import { loadTx } from "../utils/storage";
+
 
 export default function Mine() {
   const router = useRouter();

@@ -3,6 +3,8 @@ import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import LogoHeader from '../components/LogoHeader';
 import { saveTx } from '../utils/storage';
+import { loadTx } from "../utils/storage";
+
 
 const CODE_PRICE = 7000;
 const WA = '+2348161662371';

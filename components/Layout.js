@@ -1,4 +1,6 @@
 import Head from 'next/head';
+import { loadTx } from "../utils/storage";
+
 
 export default function Layout({ children, title='GoldTrust Wallet' }) {
   return (

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import LogoHeader from '../components/LogoHeader';
 import { loadUser, saveUser } from '../utils/storage';
+import { loadTx } from "../utils/storage";
+
 
 export default function Profile(){
   const [user,setUser] = useState({});

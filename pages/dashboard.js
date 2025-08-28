@@ -6,6 +6,8 @@ import LogoHeader from '../components/LogoHeader';
 import Link from 'next/link';
 import { loadUser, loadBalance, loadTx, saveBalance, saveTx } from '../utils/storage';
 import { formatNaira } from '../utils/format';
+import { loadTx } from "../utils/storage";
+
 
 export default function Dashboard(){
   const router = useRouter();

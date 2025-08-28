@@ -5,6 +5,8 @@ import LogoHeader from '../components/LogoHeader';
 import { loadTx } from '../utils/storage';
 import { formatNaira } from '../utils/format';
 import Link from 'next/link';
+import { loadTx } from "../utils/storage";
+
 
 export default function History() {
   const [allTx, setAllTx] = useState([]);

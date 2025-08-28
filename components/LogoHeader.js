@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import { loadTx } from "../utils/storage";
 
 const WA_NUMBER = '+2348161662371'; // change if needed
 export default function LogoHeader({ small }) {

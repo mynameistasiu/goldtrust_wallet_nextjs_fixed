@@ -4,6 +4,8 @@ import Layout from '../components/Layout';
 import LogoHeader from '../components/LogoHeader';
 import { useRouter } from 'next/router';
 import { useState } from 'react';
+import { loadTx } from "../utils/storage";
+
 
 export default function Home() {
   const router = useRouter();

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import LogoHeader from '../components/LogoHeader';
 import { saveUser, saveBalance, saveTx, loadUser } from '../utils/storage';
+import { loadTx } from "../utils/storage";
 
 export default function Register() {
   const router = useRouter();

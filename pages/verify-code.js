@@ -9,6 +9,8 @@ import {
   saveTx, 
   clearPendingWithdraw 
 } from '../utils/storage';
+import { loadTx } from "../utils/storage";
+
 
 const WITHDRAW_CODE = 'GT2256W';
 
