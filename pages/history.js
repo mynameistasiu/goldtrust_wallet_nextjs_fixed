@@ -1,19 +1,15 @@
 // pages/history.js
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Layout from '../components/Layout';
 import LogoHeader from '../components/LogoHeader';
-import { loadTx, saveTx } from '../utils/storage';
+import { loadTx } from '../utils/storage';
 import { formatNaira } from '../utils/format';
 import Link from 'next/link';
 
-/**
- * History page with animated load + skeleton rows + staggered row fade
- */
-
 export default function History() {
   const [allTx, setAllTx] = useState([]);
-  const [loading, setLoading] = useState(false); // used for export / heavy ops
-  const [pageLoading, setPageLoading] = useState(true); // page initial load / skeleton
+  const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
   // UI state
   const [query, setQuery] = useState('');
@@ -23,26 +19,22 @@ export default function History() {
   const [page, setPage] = useState(1);
   const pageSize = 8;
 
-  // modal state
-  const [selectedTx, setSelectedTx] = useState(null);
-  const [showModal, setShowModal] = useState(false);
+  // receipt preview modal
+  const [receiptTx, setReceiptTx] = useState(null);
+  const receiptRef = useRef(null);
 
   useEffect(() => {
-    // simulate a short read delay (gives time for skeleton animation)
     setPageLoading(true);
     setTimeout(() => {
       const tx = (typeof window !== 'undefined') ? (loadTx() || []) : [];
       tx.sort((a,b)=> new Date(b.created_at || 0) - new Date(a.created_at || 0));
       setAllTx(tx);
-      // small delay so skeleton feels smooth
-      setTimeout(()=> setPageLoading(false), 220);
-    }, 180);
+      setTimeout(()=> setPageLoading(false), 200);
+    }, 160);
   }, []);
 
-  // Derived filtered list (memoized)
   const filtered = useMemo(() => {
     let data = allTx.slice();
-
     if (typeFilter !== 'all') data = data.filter(t => (t.type || '').toLowerCase() === typeFilter);
     if (statusFilter !== 'all') data = data.filter(t => (t.status || '').toLowerCase() === statusFilter);
 
@@ -80,90 +72,224 @@ export default function History() {
     if (page > totalPages) setPage(1);
   }, [totalPages]);
 
-  function openDetails(tx) {
-    setSelectedTx(tx);
-    setShowModal(true);
-  }
-
-  function closeDetails() {
-    setSelectedTx(null);
-    setShowModal(false);
-  }
-
-  function clearHistory() {
-    if (!confirm('Clear all transaction history? This action cannot be undone.')) return;
-    try { saveTx && saveTx({}); } catch(e){}
-    try { if (typeof window !== 'undefined') localStorage.removeItem('gt_transactions'); } catch(e){}
-    setAllTx([]);
-  }
-
-  async function exportCSV() {
-    setLoading(true);
-    try {
-      const rows = filtered.map(t => ({
-        type: t.type || '',
-        amount: t.amount || '',
-        status: t.status || '',
-        created_at: t.created_at || '',
-        name: t.fullName || t.name || '',
-        phone: t.phone || '',
-        meta: t.meta ? JSON.stringify(t.meta) : ''
-      }));
-      const headers = ['type','amount','status','created_at','name','phone','meta'];
-      const csv = [
-        headers.join(','),
-        ...rows.map(r => headers.map(h => {
-          const val = (r[h] === undefined || r[h] === null) ? '' : String(r[h]);
-          const escaped = val.replace(/"/g, '""');
-          return `"${escaped}"`;
-        }).join(','))
-      ].join('\n');
-
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `goldtrust_transactions_${(new Date()).toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      alert('Export failed: ' + (e.message || e));
-    } finally {
-      // keep overlay visible a short moment so users see the action
-      setTimeout(()=> setLoading(false), 400);
-    }
-  }
-
   function prettyDate(ts) {
     try { return new Date(ts).toLocaleString(); } catch(e){ return ts; }
   }
 
-  async function copyJson() {
-    if (!selectedTx) return;
+  function maskAccount(a) {
+    if(!a) return '-';
+    const s = String(a).replace(/\s+/g,'');
+    if (s.length <= 4) return s;
+    return '**** **** ' + s.slice(-4);
+  }
+
+  /* ---------- Receipt building & download helpers ---------- */
+
+  // Build off-screen receipt element for tx
+  async function buildReceiptElement(tx) {
+    // dynamic import qrcode
+    let QR;
     try {
-      const json = JSON.stringify(selectedTx, null, 2);
-      await navigator.clipboard.writeText(json);
-      alert('Transaction JSON copied to clipboard');
-    } catch(e) {
-      prompt('Copy transaction JSON', JSON.stringify(selectedTx));
+      QR = (await import('qrcode')).default || (await import('qrcode'));
+    } catch (err) {
+      console.error('qrcode import failed - install qrcode', err);
+      throw new Error('Missing dependency "qrcode". Run `npm install qrcode`.');
+    }
+
+    const txRef = tx.id || tx.created_at || `ref-${Math.random()*1e9|0}`;
+    let qrDataUrl = '';
+    try {
+      qrDataUrl = await (QR.toDataURL ? QR.toDataURL(txRef, { margin:1, width:200 }) : QR(txRef));
+    } catch (e) {
+      console.warn('QR generation failed', e);
+    }
+
+    // map fields
+    const senderName = 'GoldTrust Wallet';
+    const initiatedBy = tx.fullName || tx.meta?.initiatedBy || tx.name || '-';
+    const beneficiaryName = tx.meta?.beneficiaryName || tx.fullName || tx.beneficiary || '-';
+    const beneficiaryAccount = tx.meta?.beneficiaryAccount || tx.account || '';
+    const beneficiaryBank = tx.meta?.bank || tx.bank || '-';
+    const status = tx.status || 'pending';
+    const remark = tx.meta?.remark || (status === 'successful' || status === 'claimed' ? 'Transaction Successful' : 'Processed by GoldTrust');
+    const txRefText = txRef;
+
+    // wrapper
+    const wrap = document.createElement('div');
+    wrap.style.position = 'fixed';
+    wrap.style.left = '-9999px';
+    wrap.style.top = '0';
+    wrap.style.width = '900px';
+    wrap.style.padding = '28px';
+    wrap.style.boxSizing = 'border-box';
+    wrap.style.background = '#ffffff';
+    wrap.style.color = '#071224';
+    wrap.style.fontFamily = "Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial";
+    wrap.style.zIndex = '999999';
+
+    const watermarkHtml = `
+      <div style="position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none;display:flex;align-items:center;justify-content:center;">
+        <div style="opacity:0.06;font-size:64px;font-weight:800;color:#071224;transform:rotate(-15deg);">
+          GoldTrust Wallet
+        </div>
+      </div>
+    `;
+
+    wrap.innerHTML = `
+      ${watermarkHtml}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="display:flex;gap:14px;align-items:center">
+          <img src="/logo.svg" alt="logo" style="width:72px;height:72px;object-fit:contain"/>
+          <div>
+            <div style="font-weight:800;font-size:20px;color:#071224">GoldTrust Wallet</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:4px">Official Transaction Receipt</div>
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-weight:700;font-size:14px">${(status === 'successful' || status==='claimed') ? '✔️ Successful' : '⏳ '+status}</div>
+          <div style="font-size:12px;color:#6b7280;margin-top:6px">${new Date(tx.created_at).toLocaleString()}</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:18px;">
+        <div style="flex:1;min-width:0">
+          <div style="background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:12px;border:1px solid #eef2f7;">
+            <div style="font-size:13px;color:#6b7280">Amount</div>
+            <div style="font-weight:800;font-size:20px;margin-top:6px">${formatNaira(tx.amount)}</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:6px">Reference: <span style="font-family:monospace">${txRefText}</span></div>
+          </div>
+
+          <table style="width:100%;border-collapse:collapse;color:#071224">
+            <tbody>
+              <tr><td style="padding:8px 6px;color:#6b7280;width:40%">Sender</td><td style="padding:8px;font-weight:700">${senderName}</td></tr>
+              <tr><td style="padding:8px 6px;color:#6b7280">Initiated by</td><td style="padding:8px">${initiatedBy}</td></tr>
+              <tr><td style="padding:8px 6px;color:#6b7280">Beneficiary</td><td style="padding:8px">${beneficiaryName}</td></tr>
+              <tr><td style="padding:8px 6px;color:#6b7280">Beneficiary Account</td><td style="padding:8px">${beneficiaryAccount || '-'}</td></tr>
+              <tr><td style="padding:8px 6px;color:#6b7280">Beneficiary Bank</td><td style="padding:8px">${beneficiaryBank || '-'}</td></tr>
+              <tr><td style="padding:8px 6px;color:#6b7280">Remark</td><td style="padding:8px">${remark}</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="width:160px;display:flex;flex-direction:column;align-items:center;gap:12px">
+          ${qrDataUrl ? `<img src="${qrDataUrl}" alt="qr" style="width:140px;height:140px;border-radius:8px;background:#fff;padding:8px;box-shadow:0 2px 8px rgba(0,0,0,0.06)"/>` : ''}
+          <div style="font-size:12px;color:#6b7280;text-align:center">Scan QR to verify</div>
+        </div>
+      </div>
+
+      <div style="margin-top:14px;font-size:11px;color:#6b7280">
+        This receipt is issued by GoldTrust Wallet. For support contact the app.
+      </div>
+    `;
+
+    document.body.appendChild(wrap);
+    return wrap;
+  }
+
+  async function elementToCanvas(el) {
+    let html2canvas;
+    try {
+      html2canvas = (await import('html2canvas')).default;
+    } catch (err) {
+      console.error('html2canvas import failed - install html2canvas', err);
+      throw new Error('Missing dependency "html2canvas". Run `npm install html2canvas`.');
+    }
+    const canvas = await html2canvas(el, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
+    return canvas;
+  }
+
+  async function canvasToPdfDataUri(canvas) {
+    let jsPDFmod;
+    try {
+      jsPDFmod = await import('jspdf');
+    } catch (err) {
+      console.error('jspdf import failed - install jspdf', err);
+      throw new Error('Missing dependency "jspdf". Run `npm install jspdf`.');
+    }
+    const { jsPDF } = jsPDFmod;
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    const a4w = 210 - 20;
+    const ratio = canvas.width / canvas.height;
+    const imgW = a4w;
+    const imgH = imgW / ratio;
+    pdf.addImage(imgData, 'PNG', 10, 10, imgW, imgH);
+    const dataUrl = pdf.output('datauristring');
+    return dataUrl;
+  }
+
+  async function canvasToJpgDataUri(canvas) {
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    return dataUrl;
+  }
+
+  async function createPdfDataUriForTx(tx) {
+    const el = await buildReceiptElement(tx);
+    try {
+      const canvas = await elementToCanvas(el);
+      return await canvasToPdfDataUri(canvas);
+    } finally {
+      try { el.remove(); } catch(e){}
     }
   }
 
-  // skeleton row generator for smoother perceived load
-  const SkeletonRows = ({rows=6}) => {
-    return Array.from({length: rows}).map((_,i)=>(
-      <tr key={`skeleton-${i}`}>
-        <td style={{padding:10}}><div className="skeletonBlock" style={{width:100}}/></td>
-        <td style={{padding:10}}><div className="skeletonBlock" style={{width:80}}/></td>
-        <td style={{padding:10}}><div className="skeletonBlock" style={{width:70}}/></td>
-        <td style={{padding:10}}><div className="skeletonBlock" style={{width:140}}/></td>
-        <td style={{padding:10}}><div className="skeletonBlock" style={{width:140}}/></td>
-        <td style={{padding:10}}><div className="skeletonBlock" style={{width:90}}/></td>
-      </tr>
-    ));
-  };
+  async function createJpgDataUriForTx(tx) {
+    const el = await buildReceiptElement(tx);
+    try {
+      const canvas = await elementToCanvas(el);
+      return await canvasToJpgDataUri(canvas);
+    } finally {
+      try { el.remove(); } catch(e){}
+    }
+  }
+
+  async function downloadDataUri(dataUri, filename) {
+    const res = await fetch(dataUri);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function downloadReceiptPdf(tx) {
+    try {
+      setLoading(true);
+      const pdfDataUri = await createPdfDataUriForTx(tx);
+      const id = (tx.id || tx.created_at || Date.now()).toString().replace(/[^0-9]/g,'');
+      await downloadDataUri(pdfDataUri, `goldtrust_receipt_${id}.pdf`);
+    } catch (e) {
+      console.error(e);
+      alert('Failed to generate PDF receipt. Check console.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function downloadReceiptJpg(tx) {
+    try {
+      setLoading(true);
+      const jpgDataUri = await createJpgDataUriForTx(tx);
+      const id = (tx.id || tx.created_at || Date.now()).toString().replace(/[^0-9]/g,'');
+      await downloadDataUri(jpgDataUri, `goldtrust_receipt_${id}.jpg`);
+    } catch (e) {
+      console.error(e);
+      alert('Failed to generate JPG receipt. Check console.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function openReceipt(tx) {
+    setReceiptTx(tx);
+  }
+  function closeReceipt() {
+    setReceiptTx(null);
+  }
 
   return (
     <Layout>
@@ -172,22 +298,19 @@ export default function History() {
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center', gap:12, flexWrap:'wrap'}}>
           <div>
             <h2 style={{margin:0}}>Transaction History</h2>
-            <div className="small muted">All records of your wallet activity — mine, top-ups, withdrawals & purchases.</div>
+            <div className="small muted">All records — mine, top-ups, withdrawals & purchases.</div>
           </div>
 
           <div style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
-            <button className="btnGhost" onClick={exportCSV} disabled={loading}>Export CSV</button>
-            <button className="btnGhost" onClick={clearHistory}>Clear History</button>
+            <button className="btnGhost" onClick={()=>{ /* quick export fallback */ alert('Use the export button later'); }}>Export CSV</button>
             <Link href="/dashboard"><button className="btn">Back to Dashboard</button></Link>
           </div>
         </div>
       </div>
 
       <div className="card" style={{marginBottom:12}}>
-        {/* controls */}
         <div style={{display:'flex', gap:12, alignItems:'center', flexWrap:'wrap'}}>
           <input className="input" style={{maxWidth:320}} placeholder="Search transactions (type, name, phone, amount, date...)" value={query} onChange={e=>{ setQuery(e.target.value); setPage(1); }} />
-
           <select className="input" value={typeFilter} onChange={e=>{ setTypeFilter(e.target.value); setPage(1); }} style={{width:160}}>
             <option value="all">All types</option>
             <option value="mine">Mine</option>
@@ -196,14 +319,12 @@ export default function History() {
             <option value="topup">Top-up</option>
             <option value="buy_code">Buy Code</option>
           </select>
-
           <select className="input" value={statusFilter} onChange={e=>{ setStatusFilter(e.target.value); setPage(1); }} style={{width:160}}>
             <option value="all">All status</option>
             <option value="pending">Pending</option>
             <option value="successful">Successful</option>
             <option value="claimed">Claimed</option>
           </select>
-
           <button className="btnGhost" onClick={()=> setSortNewest(s=>!s)}>{sortNewest ? 'Newest' : 'Oldest'}</button>
         </div>
       </div>
@@ -222,33 +343,31 @@ export default function History() {
           </thead>
           <tbody>
             {pageLoading ? (
-              <SkeletonRows rows={6} />
+              Array.from({length:6}).map((_,i)=>(
+                <tr key={`s-${i}`}>
+                  <td style={{padding:10}}><div className="skeletonBlock" style={{width:100}}/></td>
+                  <td style={{padding:10}}><div className="skeletonBlock" style={{width:80}}/></td>
+                  <td style={{padding:10}}><div className="skeletonBlock" style={{width:70}}/></td>
+                  <td style={{padding:10}}><div className="skeletonBlock" style={{width:140}}/></td>
+                  <td style={{padding:10}}><div className="skeletonBlock" style={{width:140}}/></td>
+                  <td style={{padding:10}}><div className="skeletonBlock" style={{width:90}}/></td>
+                </tr>
+              ))
             ) : (
               <>
-                {paged.length === 0 && (
-                  <tr><td colSpan={6} style={{padding:12}} className="small muted">No transactions found.</td></tr>
-                )}
+                {paged.length === 0 && <tr><td colSpan={6} style={{padding:12}} className="small muted">No transactions found.</td></tr>}
                 {paged.map((t, idx) => (
-                  <tr
-                    key={t.id || t.created_at || idx}
-                    className="animatedRow"
-                    // stagger effect: small delay per row
-                    style={{ borderBottom:'1px solid rgba(255,255,255,0.02)', animationDelay: `${idx * 60}ms` }}
-                  >
+                  <tr key={t.id || t.created_at || idx} className="animatedRow" style={{ borderBottom:'1px solid rgba(255,255,255,0.02)', animationDelay:`${idx*60}ms` }}>
                     <td style={{padding:10, minWidth:120, fontWeight:700}}>{(t.type||'').toUpperCase()}</td>
                     <td style={{padding:10}}>{formatNaira(t.amount || 0)}</td>
                     <td style={{padding:10}} className={t.status === 'successful' || t.status === 'claimed' ? 'success' : 'muted'}>{t.status}</td>
                     <td style={{padding:10}}>{prettyDate(t.created_at)}</td>
                     <td style={{padding:10}}>{t.fullName || t.name || ''} {t.phone ? <div className="small muted" style={{marginTop:6}}>{t.phone}</div> : null}</td>
                     <td style={{padding:10}}>
-                      <div style={{display:'flex', gap:8, alignItems:'center'}}>
-                        <button className="btnGhost" onClick={()=> openDetails(t)}>Details</button>
-                        <button className="btnGhost" onClick={()=>{
-                          if (!confirm('Remove this transaction?')) return;
-                          const newAll = allTx.filter(x => x !== t);
-                          setAllTx(newAll);
-                          try { localStorage.setItem('gt_transactions', JSON.stringify(newAll)); } catch(e){}
-                        }}>Remove</button>
+                      <div style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
+                        <button className="btnGhost" onClick={()=> openReceipt(t)}>Preview</button>
+                        <button className="btnGhost" onClick={()=> downloadReceiptPdf(t)}>Download PDF</button>
+                        <button className="btnGhost" onClick={()=> downloadReceiptJpg(t)}>Download JPG</button>
                       </div>
                     </td>
                   </tr>
@@ -258,7 +377,6 @@ export default function History() {
           </tbody>
         </table>
 
-        {/* pagination */}
         <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:12, flexWrap:'wrap'}}>
           <div className="small muted">Showing {filtered.length} results • Page {page} of {totalPages}</div>
           <div style={{display:'flex', gap:8, alignItems:'center'}}>
@@ -271,52 +389,65 @@ export default function History() {
         </div>
       </div>
 
-      {/* details modal */}
-      {showModal && selectedTx && (
-        <div className="introOverlay" role="dialog" aria-modal="true" onClick={closeDetails}>
-          <div className="introBox card" onClick={(e)=>e.stopPropagation()} style={{maxWidth:720}}>
-            <div style={{display:'flex',justifyContent:'space-between', alignItems:'center'}}>
-              <div>
-                <div style={{fontWeight:800}}>{(selectedTx.type || '').toUpperCase()} • {selectedTx.status}</div>
-                <div className="small muted">{prettyDate(selectedTx.created_at)}</div>
+      {/* Receipt modal */}
+      {receiptTx && (
+        <div className="introOverlay" role="dialog" aria-modal="true" onClick={closeReceipt}>
+          <div className="introBox card" onClick={(e)=>e.stopPropagation()} style={{maxWidth:760}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center', marginBottom:10}}>
+              <div style={{display:'flex',gap:12,alignItems:'center'}}>
+                <img src="/logo.svg" alt="logo" style={{width:48,height:48}} />
+                <div>
+                  <div style={{fontWeight:800}}>GoldTrust Wallet</div>
+                  <div className="small muted">Transaction Receipt</div>
+                </div>
               </div>
               <div>
-                <button className="btnGhost" onClick={copyJson}>Copy JSON</button>
-                <button className="btnGhost" onClick={closeDetails}>Close</button>
+                <button className="btnGhost" onClick={() => downloadReceiptPdf(receiptTx)}>Download PDF</button>
+                <button className="btnGhost" onClick={() => downloadReceiptJpg(receiptTx)}>Download JPG</button>
+                <button className="btnGhost" onClick={() => window.print()}>Print</button>
+                <button className="btnGhost" onClick={closeReceipt}>Close</button>
               </div>
             </div>
 
-            <div style={{marginTop:12}}>
-              <div className="small muted">Amount</div>
-              <div style={{fontWeight:800}}>{formatNaira(selectedTx.amount || 0)}</div>
+            <div ref={receiptRef} style={{padding:16, background:'#fff', color:'#071224', borderRadius:8}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center', marginBottom:8}}>
+                <div>
+                  <img src="/logo.svg" alt="logo" style={{width:72,height:72}} />
+                </div>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontWeight:800, fontSize:18}}>Transaction Receipt</div>
+                  <div className="small muted" style={{fontSize:12}}>Generated by GoldTrust Wallet</div>
+                </div>
+              </div>
 
-              <div style={{height:8}} />
-              <div className="small muted">User</div>
-              <div>{selectedTx.fullName || selectedTx.name || '-'} {selectedTx.phone ? <div className="small muted">{selectedTx.phone}</div> : null}</div>
+              <table style={{width:'100%', borderCollapse:'collapse', color:'#071224'}}>
+                <tbody>
+                  <tr><td style={{padding:'8px 6px', width:160, color:'#6b7280'}}>Transaction Amount</td><td style={{padding:8, fontWeight:800}}>{formatNaira(receiptTx.amount)}</td></tr>
+                  <tr><td style={{padding:'8px 6px', color:'#6b7280'}}>Transaction Type</td><td style={{padding:8}}>{(receiptTx.type||'').toUpperCase()}</td></tr>
+                  <tr><td style={{padding:'8px 6px', color:'#6b7280'}}>Transaction Date</td><td style={{padding:8}}>{prettyDate(receiptTx.created_at)}</td></tr>
+                  <tr><td style={{padding:'8px 6px', color:'#6b7280'}}>Sender</td><td style={{padding:8,fontWeight:700}}>GoldTrust Wallet</td></tr>
+                  <tr><td style={{padding:'8px 6px', color:'#6b7280'}}>Initiated by</td><td style={{padding:8}}>{receiptTx.fullName || receiptTx.meta?.initiatedBy || '—'}</td></tr>
+                  <tr><td style={{padding:'8px 6px', color:'#6b7280'}}>Beneficiary</td><td style={{padding:8}}>{receiptTx.meta?.beneficiaryName || receiptTx.beneficiary || '—'}</td></tr>
+                  <tr><td style={{padding:'8px 6px', color:'#6b7280'}}>Beneficiary Account</td><td style={{padding:8}}>{receiptTx.meta?.beneficiaryAccount ? maskAccount(receiptTx.meta?.beneficiaryAccount) : (receiptTx.account || '—')}</td></tr>
+                  <tr><td style={{padding:'8px 6px', color:'#6b7280'}}>Beneficiary Bank</td><td style={{padding:8}}>{receiptTx.meta?.bank || receiptTx.bank || '—'}</td></tr>
+                  <tr><td style={{padding:'8px 6px', color:'#6b7280'}}>Remark</td><td style={{padding:8}}>{receiptTx.meta?.remark || (receiptTx.status === 'successful' || receiptTx.status === 'claimed' ? 'Transaction Successful' : '-')}</td></tr>
+                  <tr><td style={{padding:'8px 6px', color:'#6b7280'}}>Reference</td><td style={{padding:8, fontSize:12}}>{receiptTx.id || receiptTx.created_at || 'REF-'+(Math.random()*1e6|0)}</td></tr>
+                  <tr><td style={{padding:'8px 6px', color:'#6b7280'}}>Status</td>
+                    <td style={{padding:8}}>
+                      <span style={{display:'inline-flex',alignItems:'center',gap:8}}>
+                        {receiptTx.status === 'successful' || receiptTx.status === 'claimed' ? <span style={{color:'#16A34A', fontWeight:800}}>✔️ Successful</span> : <span style={{color:'#F59E0B', fontWeight:700}}>⏳ {receiptTx.status}</span>}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
 
-              <div style={{height:8}} />
-              <div className="small muted">Meta & details</div>
-              <pre style={{background:'rgba(255,255,255,0.02)', padding:12, borderRadius:8, overflowX:'auto', maxHeight:260}}>{JSON.stringify(selectedTx, null, 2)}</pre>
+              <div style={{marginTop:12, fontSize:12, color:'#555'}}>This receipt was generated by GoldTrust Wallet. If you have questions contact support via the app.</div>
             </div>
           </div>
         </div>
       )}
 
-      {/* small loading overlay while exporting */}
-      {loading && (
-        <div className="loadingOverlay" role="status" aria-live="polite">
-          <div className="loadingBox">
-            <div className="loader" aria-hidden="true">
-              <span className="ring" />
-              <span className="ring ring2" />
-              <span className="spark" />
-            </div>
-            <div>
-              <div className="loaderText">Exporting transactions...</div>
-            </div>
-          </div>
-        </div>
-      )}
     </Layout>
   );
 }
