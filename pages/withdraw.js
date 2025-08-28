@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import LogoHeader from '../components/LogoHeader';
 import { loadUser, loadBalance, saveTx, savePendingWithdraw, loadTx } from '../utils/storage';
-import { loadTx } from "../utils/storage";
+
 
 
 const BANKS = [
