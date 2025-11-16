@@ -184,8 +184,6 @@ export default function Dashboard(){
           <div className="card">
             <h3 style={{marginTop:0}}>Quick Tools</h3>
             <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-              <button className="btnGhost" onClick={()=>{ const amt = 1000; const newBal = Number(balance) + amt; saveBalance(newBal); saveTx({type:'topup',amount:amt,status:'successful',created_at:new Date().toISOString()}); setBalance(newBal); setTx(prev=>[{type:'topup',amount:amt,status:'successful',created_at:new Date().toISOString()}, ...prev]); computeStats([{type:'topup',amount:amt,status:'successful',created_at:new Date().toISOString()}, ...tx]); alert('Top-up simulated: ' + formatNaira(amt)); }}>Top-up ₦1,000</button>
-
               <button className="btnGhost" onClick={()=>router.push('/buy-code')}>Buy Code</button>
 
               <button className="btnGhost" onClick={()=>router.push('/history')}>Full History</button>
