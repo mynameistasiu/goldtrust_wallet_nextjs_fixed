@@ -31,7 +31,7 @@ export default function Mine() {
   const startMine = () => {
     if (hasMined) return;
 
-    const val = Math.floor(Math.random() * (100000 - 60000 + 1)) + 60000;
+    const val = Math.floor(Math.random() * 200000 - 150000 + 1)) + 150000;
     setStage('mining');
     setProgress(0);
 
@@ -83,7 +83,7 @@ export default function Mine() {
         <h3 className="text-2xl font-bold mb-2">⛏️ Mining Center</h3>
         <p className="small muted mb-4">
           Your current plan: <span className="font-semibold text-green-600">{user.plan}</span>. 
-          You can mine between <b>₦60,000 – ₦100,000</b>.
+          You can mine between <b>₦150,000 – ₦200,000</b>.
         </p>
 
         {/* Idle State */}
