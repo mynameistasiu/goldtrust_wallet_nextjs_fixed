@@ -31,7 +31,7 @@ export default function Mine() {
   const startMine = () => {
     if (hasMined) return;
 
-    const val = Math.floor(Math.random() * 200000 - 150000 + 1)) + 150000;
+    const val = Math.floor(Math.random() * (200000 - 150000 + 1)) + 150000;
     setStage('mining');
     setProgress(0);
 
