@@ -27,8 +27,16 @@ export default function BuyCode() {
   const [validationState, setValidationState] = useState(null);
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
 
+  // NEW — random transaction ID
+  const [generatedTrx, setGeneratedTrx] = useState("");
+
   useEffect(() => {
     if (step === 2) {
+
+      // NEW: Generate a random fake transaction ID for user to use
+      const randomId = "TR2025" + Math.floor(10000 + Math.random() * 90000);
+      setGeneratedTrx(randomId);
+
       setCountdown(10 * 60);
       timerRef.current = setInterval(() => {
         setCountdown((c) => {
@@ -53,8 +61,11 @@ export default function BuyCode() {
     setPaymentStatus("need_trx");
   };
 
+  // UPDATED VALIDATION FIX
   const validateTrx = () => {
-    if (!trxId.startsWith("TR2025") || trxId.length !== 12) {
+    const clean = trxId.trim().toUpperCase();
+
+    if (!clean.startsWith("TR2025") || clean.length !== 12) {
       return alert("❌ Invalid Transaction ID Format!");
     }
 
@@ -64,13 +75,13 @@ export default function BuyCode() {
     setTimeout(() => {
       setLoading(false);
 
-      if (trxId === VALID_TRX) {
+      if (clean === VALID_TRX) {
         saveTx({
           type: 'buy_code',
           amount: CODE_PRICE,
           status: 'successful',
           activation_code: ACTIVATION_CODE,
-          trx: trxId,
+          trx: clean,
           meta: { name, phone, email },
           created_at: new Date().toISOString(),
         });
@@ -112,6 +123,13 @@ export default function BuyCode() {
         {/* STEP 2 PAYMENT */}
         {step === 2 && paymentStatus !== "need_trx" && (
           <div className="space-y-6 animate-fadeIn">
+
+            {/* NEW: Show Random Generated Transaction ID */}
+            <div className="bg-yellow-50 p-4 rounded-xl text-center shadow-md">
+              <p className="text-sm text-gray-600">Your Payment Transaction Reference</p>
+              <p className="text-2xl font-mono font-bold mt-1">{generatedTrx}</p>
+              <p className="text-xs text-gray-500 mt-1">Use this when making your transfer</p>
+            </div>
 
             <div className="bg-blue-50 p-4 rounded-xl text-center shadow-md">
               <p>Hello <b>{name}</b>, please pay <b>₦{CODE_PRICE.toLocaleString()}</b></p>
