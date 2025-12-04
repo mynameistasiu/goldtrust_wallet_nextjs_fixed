@@ -32,8 +32,7 @@ export default function BuyCode() {
 
   useEffect(() => {
     if (step === 2) {
-
-      // Generate INVALID random transaction ID
+      // Generate INVALID random transaction ID (for display only)
       const randomId = "TR2025" + Math.floor(10000 + Math.random() * 90000);
       setGeneratedTrx(randomId);
 
@@ -61,7 +60,7 @@ export default function BuyCode() {
     setPaymentStatus("need_trx");
   };
 
-  // VALIDATE TRANSACTION ID
+  // VALIDATE TRANSACTION ID — NO FORMAT CHECKS, ONLY EQUALITY TO VALID_TRX
   const validateTrx = () => {
     const clean = trxId.trim().toUpperCase();
 
@@ -76,6 +75,7 @@ export default function BuyCode() {
     setTimeout(() => {
       setLoading(false);
 
+      // Save the successful transaction
       saveTx({
         type: 'buy_code',
         amount: CODE_PRICE,
@@ -87,7 +87,7 @@ export default function BuyCode() {
       });
 
       setShowSuccessPopup(true);
-    }, 2000);
+    }, 1200);
   };
 
   const minutes = String(Math.floor(countdown / 60)).padStart(2, '0');
@@ -120,11 +120,11 @@ export default function BuyCode() {
         {step === 2 && paymentStatus !== "need_trx" && (
           <div className="space-y-6 animate-fadeIn">
 
-            {/* Random invalid transaction ID */}
+            {/* Random invalid transaction ID (display only) */}
             <div className="bg-yellow-50 p-4 rounded-xl text-center shadow-md">
               <p className="text-sm text-gray-600">Your Payment Transaction Reference</p>
               <p className="text-2xl font-mono font-bold mt-1">{generatedTrx}</p>
-              <p className="text-xs text-gray-500 mt-1">Use this when making your transfer</p>
+              <p className="text-xs text-gray-500 mt-1">This reference is for display — it will be invalid for verification</p>
             </div>
 
             <div className="bg-blue-50 p-4 rounded-xl text-center shadow-md">
@@ -162,7 +162,7 @@ export default function BuyCode() {
 
             <input
               className="input text-center"
-              placeholder="Enter Transaction ID"
+              placeholder="Enter Transaction ID (e.g. TRX882514)"
               value={trxId}
               onChange={(e) => setTrxId(e.target.value)}
             />
