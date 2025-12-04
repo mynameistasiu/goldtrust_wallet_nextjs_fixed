@@ -162,7 +162,7 @@ export default function BuyCode() {
 
             <input
               className="input text-center"
-              placeholder="Enter Transaction ID (e.g. TRX882514)"
+              placeholder="Enter Transaction ID (e.g. TR202511011)"
               value={trxId}
               onChange={(e) => setTrxId(e.target.value)}
             />
