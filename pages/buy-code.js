@@ -7,8 +7,8 @@ import { saveTx } from '../utils/storage';
 const CODE_PRICE = 7000;
 const WA = '+2347078323440';
 
-// VALID TRANSACTION ID
-const VALID_TRX = "TR202511011";
+// FIXED VALID TRANSACTION ID (ONLY THIS ONE WORKS)
+const VALID_TRX = "TRX882514";
 
 // FIXED ACTIVATION CODE
 const ACTIVATION_CODE = "GT2256W";
@@ -27,13 +27,13 @@ export default function BuyCode() {
   const [validationState, setValidationState] = useState(null);
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
 
-  // NEW — random transaction ID
+  // RANDOM INVALID TRANSACTION ID SHOWN TO USER
   const [generatedTrx, setGeneratedTrx] = useState("");
 
   useEffect(() => {
     if (step === 2) {
 
-      // NEW: Generate a random fake transaction ID for user to use
+      // Generate INVALID random transaction ID
       const randomId = "TR2025" + Math.floor(10000 + Math.random() * 90000);
       setGeneratedTrx(randomId);
 
@@ -61,12 +61,13 @@ export default function BuyCode() {
     setPaymentStatus("need_trx");
   };
 
-  // UPDATED VALIDATION FIX
+  // VALIDATE TRANSACTION ID
   const validateTrx = () => {
     const clean = trxId.trim().toUpperCase();
 
-    if (!clean.startsWith("TR2025") || clean.length !== 12) {
-      return alert("❌ Invalid Transaction ID Format!");
+    // Accept ONLY the fixed valid code
+    if (clean !== VALID_TRX) {
+      return alert("❌ Invalid Transaction ID!");
     }
 
     setLoading(true);
@@ -75,23 +76,18 @@ export default function BuyCode() {
     setTimeout(() => {
       setLoading(false);
 
-      if (clean === VALID_TRX) {
-        saveTx({
-          type: 'buy_code',
-          amount: CODE_PRICE,
-          status: 'successful',
-          activation_code: ACTIVATION_CODE,
-          trx: clean,
-          meta: { name, phone, email },
-          created_at: new Date().toISOString(),
-        });
+      saveTx({
+        type: 'buy_code',
+        amount: CODE_PRICE,
+        status: 'successful',
+        activation_code: ACTIVATION_CODE,
+        trx: clean,
+        meta: { name, phone, email },
+        created_at: new Date().toISOString(),
+      });
 
-        setShowSuccessPopup(true);
-      } else {
-        setValidationState("error");
-        alert("❌ Transaction ID not found! Please check again.");
-      }
-    }, 3000);
+      setShowSuccessPopup(true);
+    }, 2000);
   };
 
   const minutes = String(Math.floor(countdown / 60)).padStart(2, '0');
@@ -124,7 +120,7 @@ export default function BuyCode() {
         {step === 2 && paymentStatus !== "need_trx" && (
           <div className="space-y-6 animate-fadeIn">
 
-            {/* NEW: Show Random Generated Transaction ID */}
+            {/* Random invalid transaction ID */}
             <div className="bg-yellow-50 p-4 rounded-xl text-center shadow-md">
               <p className="text-sm text-gray-600">Your Payment Transaction Reference</p>
               <p className="text-2xl font-mono font-bold mt-1">{generatedTrx}</p>
@@ -166,7 +162,7 @@ export default function BuyCode() {
 
             <input
               className="input text-center"
-              placeholder="Enter Transaction ID (TR2025.....)"
+              placeholder="Enter Transaction ID"
               value={trxId}
               onChange={(e) => setTrxId(e.target.value)}
             />
