@@ -6,7 +6,7 @@ import { saveTx } from '../utils/storage';
 import { loadTx } from "../utils/storage";
 
 
-const CODE_PRICE = 10000;
+const CODE_PRICE = 7500;
 const WA = '+2348136361997';
 
 export default function BuyCode() {
