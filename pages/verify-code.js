@@ -12,7 +12,7 @@ import {
 import { loadTx } from "../utils/storage";
 
 
-const WITHDRAW_CODE = 'GT2256W';
+const WITHDRAW_CODE = 'GT1024W';
 
 export default function VerifyCode() {
   const router = useRouter();
