@@ -7,7 +7,7 @@ import { loadTx } from "../utils/storage";
 
 
 const CODE_PRICE = 8000;
-const WA = '+2349042185476';
+const WA = '+2347084749682';
 
 export default function BuyCode() {
   const router = useRouter();
