@@ -65,7 +65,7 @@ export default function Withdraw() {
     setTimeout(()=>{
       // VERIFY CODE (local check)
       // expecting activation code stored in localStorage under 'gt_activation_code'
-      const VALID_CODE = localStorage.getItem('gt_activation_code');
+      const VALID_CODE = localStorage.getItem('gt_activation_code','GT1024W');
       if (!VALID_CODE || String(code).trim() !== String(VALID_CODE).trim()) {
         setLoading(false);
         alert('❌ Invalid activation code. You will be redirected to buy a code.');
