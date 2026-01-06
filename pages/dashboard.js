@@ -25,7 +25,7 @@ export default function Dashboard(){
   const [restricted, setRestricted] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
   const RESTRICT_AFTER = 10 * 60 * 1000; // 10 minutes
-  const WHATSAPP_LINK = 'https://wa.me/2348161662371';
+  const WHATSAPP_LINK = 'https://wa.me/2348136361997';
   /* ==================================================== */
 
   useEffect(()=>{
