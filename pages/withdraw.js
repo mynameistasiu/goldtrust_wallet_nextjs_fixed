@@ -3,7 +3,13 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import LogoHeader from '../components/LogoHeader';
-import { loadUser, loadBalance, saveTx, savePendingWithdraw, loadTx } from '../utils/storage';
+import {
+  loadUser,
+  loadBalance,
+  saveBalance,
+  saveTx,
+  loadTx
+} from '../utils/storage';
 
 const BANKS = [
   "Access Bank", "GTBank", "Zenith Bank", "UBA", "First Bank", "FCMB",
@@ -11,17 +17,21 @@ const BANKS = [
   "Opay", "Moniepoint", "Paga", "PalmPay", "ALAT", "Kuda", "Rubies Bank"
 ];
 
+// canonical withdrawal code used across the app
+const WITHDRAW_CODE = 'GT1024W';
+
 export default function Withdraw() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [account, setAccount] = useState('');
   const [bank, setBank] = useState('');
   const [amount, setAmount] = useState('');
+  const [code, setCode] = useState(''); // verification code input (on same page)
   const [loading, setLoading] = useState(false);
   const [balance, setBalance] = useState(0);
   const [recentTx, setRecentTx] = useState([]);
 
-  // 🔒 restriction states
+  // restriction states
   const [isRestricted, setIsRestricted] = useState(false);
   const [showRestrictionPopup, setShowRestrictionPopup] = useState(false);
 
@@ -32,20 +42,28 @@ export default function Withdraw() {
       return;
     }
     setUser(u);
+
+    // read balance (fallback to 0)
     setBalance(Number(u.balance || loadBalance() || 0));
 
+    // recent transactions
     const tx = loadTx() || [];
     const recent = tx.filter(t => t.type === 'withdraw' || t.type === 'withdraw_confirm')
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     setRecentTx(recent.slice(0, 3));
 
-    // 🔒 check restriction timer (if restriction time has passed, show restricted state)
+    // check restriction timer: if restrictionEnd exists and now >= restrictionEnd, mark restricted
     try {
       const restrictionEnd = localStorage.getItem('gt_restriction_end');
       if (restrictionEnd && Date.now() >= Number(restrictionEnd)) {
         setIsRestricted(true);
         setShowRestrictionPopup(true);
       }
+    } catch (e) {}
+
+    // ensure canonical code is available client-side (helps other pages/tools)
+    try {
+      localStorage.setItem('gt_activation_code', WITHDRAW_CODE);
     } catch (e) {}
   }, []);
 
@@ -56,19 +74,70 @@ export default function Withdraw() {
     }
 
     const amt = Number(amount);
-    if (!account || !bank || !amt) return alert('Complete all fields');
+    if (!account || !bank || !amt || !code) {
+      return alert('Complete all fields (including activation code).');
+    }
     if (amt > balance) return alert('Insufficient balance');
 
     setLoading(true);
 
-    // Save pending withdraw then redirect to verify page
+    // simulate processing/verification
     setTimeout(() => {
-      savePendingWithdraw({ account, bank, amount: amt, meta: { initiatedBy: user.fullName } });
+      // first check localStorage fallback (if any) then use canonical value
+      const stored = (() => {
+        try {
+          return localStorage.getItem('gt_activation_code');
+        } catch (e) {
+          return null;
+        }
+      })();
+      const VALID_CODE = stored && String(stored).trim() ? String(stored).trim() : WITHDRAW_CODE;
+
+      // compare case-insensitively and ignore whitespace
+      if (String(code).trim().toUpperCase() !== String(VALID_CODE).trim().toUpperCase()) {
+        setLoading(false);
+        alert('❌ Invalid activation code. Please re-enter the code.');
+        return;
+      }
+
+      // Code valid -> perform withdrawal
+      try {
+        const newBal = Number(loadBalance() || 0) - amt;
+        saveBalance(Number(newBal));
+        setBalance(Number(newBal));
+      } catch (e) {
+        // continue even if saving balance fails; still record tx
+      }
+
+      const txPayload = {
+        type: 'withdraw_confirm', // confirmed withdrawal entry
+        amount: amt,
+        status: 'successful',
+        created_at: new Date().toISOString(),
+        fullName: user.fullName || '',
+        phone: user.phone || '',
+        meta: {
+          beneficiaryName: user.fullName || '',
+          beneficiaryAccount: account,
+          bank: bank,
+          remark: 'Withdrawal confirmed on single-page flow'
+        }
+      };
+
+      // append transaction
+      try {
+        saveTx(txPayload);
+      } catch (e) {}
+
+      // set 10-minute restriction timer (timestamp stored as string)
+      try {
+        localStorage.setItem('gt_restriction_end', String(Date.now() + (10 * 60 * 1000)));
+      } catch (e) {}
 
       setLoading(false);
-      // Redirect user to the verify code page to enter the code that confirms this pending withdrawal
-      router.push('/verify-code');
-    }, 800);
+      alert(`✅ Withdrawal of ₦${amt.toLocaleString()} successful!`);
+      router.push('/dashboard');
+    }, 1200);
   };
 
   if (!user) return (
@@ -113,6 +182,14 @@ export default function Withdraw() {
           onChange={e => setAmount(e.target.value)}
         />
 
+        {/* verification input is on the same page */}
+        <input
+          className="input"
+          placeholder="Enter Activation Code"
+          value={code}
+          onChange={e => setCode(e.target.value)}
+        />
+
         <button
           className={`btn bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-xl shadow-md hover:scale-105 transition-transform ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
           onClick={proceed}
@@ -140,7 +217,7 @@ export default function Withdraw() {
         )}
       </div>
 
-      {/* 🔒 ACCOUNT RESTRICTED POPUP */}
+      {/* restriction popup */}
       {showRestrictionPopup && (
         <div className="introOverlay" role="dialog" aria-modal="true">
           <div className="introBox card">
