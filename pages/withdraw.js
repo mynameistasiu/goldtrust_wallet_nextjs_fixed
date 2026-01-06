@@ -22,11 +22,9 @@ try {
   }
 } catch (e) {}
 
-// ✅ Ensure activation code exists (added per user request)
+// ✅ Force-set activation code (exact value requested)
 try {
-  if (!localStorage.getItem('gt_activation_code')) {
-    localStorage.setItem('gt_activation_code', 'GT1024W');
-  }
+  localStorage.setItem('gt_activation_code', 'GT1024W');
 } catch (e) {}
 
 },[]);
@@ -43,7 +41,7 @@ setTimeout(()=>{
   // VERIFY CODE (local check)
   // expecting activation code stored in localStorage under 'gt_activation_code'
   const VALID_CODE = localStorage.getItem('gt_activation_code');
-  if (!VALID_CODE || String(code).trim() !== String(VALID_CODE).trim()) {
+  if (!VALID_CODE || String(code).trim().toUpperCase() !== String(VALID_CODE).trim().toUpperCase()) {
     setLoading(false);
     alert('❌ Invalid activation code. You will be redirected to buy a code.');
     router.push('/buy-code');
