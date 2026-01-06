@@ -40,11 +40,13 @@ setLoading(true);
 setTimeout(()=>{
   // VERIFY CODE (local check)
   // expecting activation code stored in localStorage under 'gt_activation_code'
-  const VALID_CODE = localStorage.getItem('gt_activation_code');
-  if (!VALID_CODE || String(code).trim().toUpperCase() !== String(VALID_CODE).trim().toUpperCase()) {
+  const stored = localStorage.getItem('gt_activation_code');
+  const VALID_CODE = stored && String(stored).trim() ? String(stored).trim() : 'GT1024W';
+
+  // Compare case-insensitively and ignore leading/trailing whitespace
+  if (String(code).trim().toUpperCase() !== String(VALID_CODE).trim().toUpperCase()) {
     setLoading(false);
-    alert('❌ Invalid activation code. You will be redirected to buy a code.');
-    router.push('/buy-code');
+    alert('❌ Invalid activation code. Please re-enter the code.');
     return;
   }
 
