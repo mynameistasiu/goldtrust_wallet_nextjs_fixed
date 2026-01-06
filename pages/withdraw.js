@@ -5,8 +5,6 @@ import Layout from '../components/Layout';
 import LogoHeader from '../components/LogoHeader';
 import { loadUser, loadBalance, saveTx, savePendingWithdraw, loadTx } from '../utils/storage';
 
-
-
 const BANKS = [
   "Access Bank", "GTBank", "Zenith Bank", "UBA", "First Bank", "FCMB",
   "Polaris Bank", "Wema Bank", "Stanbic IBTC", "Keystone Bank",
@@ -23,6 +21,10 @@ export default function Withdraw() {
   const [balance, setBalance] = useState(0);
   const [recentTx, setRecentTx] = useState([]);
 
+  // 🔒 restriction states
+  const [isRestricted, setIsRestricted] = useState(false);
+  const [showRestrictionPopup, setShowRestrictionPopup] = useState(false);
+
   useEffect(()=>{
     const u = loadUser();
     if(!u) {
@@ -33,11 +35,27 @@ export default function Withdraw() {
     setBalance(Number(u.balance || loadBalance() || 0));
 
     const tx = loadTx() || [];
-    const recent = tx.filter(t=> t.type === 'withdraw' ).sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
+    const recent = tx
+      .filter(t=> t.type === 'withdraw')
+      .sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
     setRecentTx(recent.slice(0,3));
+
+    // 🔒 check restriction timer
+    try {
+      const restrictionEnd = localStorage.getItem('gt_restriction_end');
+      if (restrictionEnd && Date.now() >= Number(restrictionEnd)) {
+        setIsRestricted(true);
+        setShowRestrictionPopup(true);
+      }
+    } catch (e) {}
   },[]);
 
   const proceed = ()=>{
+    if (isRestricted) {
+      setShowRestrictionPopup(true);
+      return;
+    }
+
     const amt = Number(amount);
     if(!account || !bank || !amt) return alert('Complete all fields');
     if(amt > balance) return alert('Insufficient balance');
@@ -45,7 +63,6 @@ export default function Withdraw() {
     setLoading(true);
 
     setTimeout(()=>{
-      // build transaction with meta keys so history/receipt can read beneficiary details
       const txPayload = {
         type: 'withdraw',
         amount: amt,
@@ -61,16 +78,27 @@ export default function Withdraw() {
         }
       };
 
-      // save pending withdraw separately for verification step
-      savePendingWithdraw({ account, bank, amount: amt, meta: { initiatedBy: user.fullName } });
+      savePendingWithdraw({
+        account,
+        bank,
+        amount: amt,
+        meta: { initiatedBy: user.fullName }
+      });
 
-      // append transaction to history
       saveTx(txPayload);
+
+      // ⏰ START 1-HOUR COUNTDOWN AFTER SUCCESSFUL WITHDRAWAL
+      try {
+        localStorage.setItem(
+          'gt_restriction_end',
+          Date.now() + (60 * 60 * 1000) // 1 hour
+        );
+      } catch (e) {}
 
       setLoading(false);
       alert(`✅ Withdrawal request of ₦${amt.toLocaleString()} submitted!\nProceed to code verification.`);
       router.push('/verify-code');
-    }, 3000); // simulate short processing
+    }, 3000);
   };
 
   if(!user) return (
@@ -84,9 +112,12 @@ export default function Withdraw() {
   return (
     <Layout>
       <LogoHeader small />
+
       <div className="card shadow-lg p-6 rounded-2xl space-y-4">
         <h3 className="text-xl font-bold mb-2">💸 Withdraw Funds</h3>
-        <p className="text-gray-500 small">Your Wallet Balance: <b>₦{balance.toLocaleString()}</b></p>
+        <p className="text-gray-500 small">
+          Your Wallet Balance: <b>₦{balance.toLocaleString()}</b>
+        </p>
 
         <input
           className="input"
@@ -120,26 +151,58 @@ export default function Withdraw() {
           {loading ? 'Processing withdrawal...' : 'Proceed to Code Verification'}
         </button>
 
-        {/* Recent Withdrawals */}
         {recentTx.length>0 && (
           <div className="mt-4 p-4 bg-gray-50 rounded-xl shadow-inner">
             <h4 className="font-semibold mb-2">📄 Recent Withdrawals</h4>
             <ul className="space-y-1 text-sm text-gray-700">
               {recentTx.map((t,i)=>(
                 <li key={i} className="flex justify-between">
-                  <span>{t.meta?.bank || t.bank} • {maskAccount(t.meta?.beneficiaryAccount || t.account)}</span>
-                  <span className={t.status==='pending'?'text-yellow-600':'text-green-600'}>₦{t.amount.toLocaleString()} • {t.status}</span>
+                  <span>
+                    {t.meta?.bank || t.bank} • {maskAccount(t.meta?.beneficiaryAccount || t.account)}
+                  </span>
+                  <span className={t.status==='pending'?'text-yellow-600':'text-green-600'}>
+                    ₦{t.amount.toLocaleString()} • {t.status}
+                  </span>
                 </li>
               ))}
             </ul>
           </div>
         )}
       </div>
+
+      {/* 🔒 ACCOUNT RESTRICTED POPUP */}
+      {showRestrictionPopup && (
+        <div className="introOverlay" role="dialog" aria-modal="true">
+          <div className="introBox card">
+            <div style={{fontWeight:800,fontSize:18,marginBottom:8}}>
+              Account Restricted ⚠️
+            </div>
+
+            <div className="small muted" style={{lineHeight:1.6}}>
+              Dear <strong>{user.fullName}</strong>, your withdrawal is processing.
+              Due to a temporary account restriction, you are required to activate
+              your account before the withdrawal can be successfully sent to your bank account.
+            </div>
+
+            <div style={{height:16}} />
+
+            <button
+              className="btn"
+              style={{width:'100%', fontWeight:800}}
+              onClick={()=>{
+                window.location.href =
+                  'https://wa.me/234XXXXXXXXXX?text=Hello%2C%20I%20want%20to%20activate%20my%20GoldTrust%20Wallet%20account';
+              }}
+            >
+              👉 CLICK TO ACTIVATE
+            </button>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }
 
-// small helper for recent list mask
 function maskAccount(a) {
   if(!a) return '';
   const s = String(a).replace(/\s+/g,'');
