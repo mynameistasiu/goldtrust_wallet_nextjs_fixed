@@ -190,6 +190,17 @@ export default function Withdraw() {
           onChange={e => setCode(e.target.value)}
         />
 
+        {/* NEW: link to buy code (shows under activation code input, above the Withdraw button) */}
+        <div className="text-center text-sm mt-2 mb-2">
+          <span>Don't have an activation code? </span>
+          <a
+            className="text-blue-600 underline cursor-pointer"
+            onClick={() => router.push('/buy-code')}
+          >
+            Click here to buy.
+          </a>
+        </div>
+
         <button
           className={`btn bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-xl shadow-md hover:scale-105 transition-transform ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
           onClick={proceed}
