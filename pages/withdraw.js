@@ -232,7 +232,7 @@ export default function Withdraw() {
             )}
 
             <button className="btn" style={{ width:'100%', fontWeight:800 }} onClick={()=>{
-              window.location.href = 'https://wa.me/2348161662371?text=Hello%2C%20I%20want%20to%20activate%20my%20GoldTrust%20Wallet%20account';
+              window.location.href = 'https://wa.me/2347085462173?text=Hello%2C%20I%20want%20to%20activate%20my%20GoldTrust%20Wallet%20account';
             }}>
               👉 CLICK TO ACTIVATE
             </button>
