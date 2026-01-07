@@ -23,7 +23,7 @@ export default function Dashboard(){
   const [restricted, setRestricted] = useState(false); // UI lock state
   const [timeLeft, setTimeLeft] = useState(0); // ms remaining until restriction
   const RESTRICT_AFTER = 10 * 60 * 1000; // 10 minutes (not used to compute — canonical source is localStorage.gt_restriction_end)
-  const WHATSAPP_LINK = 'https://wa.me/2348136361997';
+  const WHATSAPP_LINK = 'https://wa.me/2347085462173';
   /* ==================================================== */
 
   useEffect(()=>{
