@@ -20,7 +20,6 @@ export default function BuyCode() {
   const timerRef = useRef(null);
   const [paymentStatus, setPaymentStatus] = useState(null); // null | pending | unsuccessful | success
   const [receiptFile, setReceiptFile] = useState(null);
-  const [receiptPreview, setReceiptPreview] = useState(null);
   const [copySuccess, setCopySuccess] = useState('');
 
   useEffect(() => {
@@ -53,12 +52,6 @@ export default function BuyCode() {
     if (!f) return;
     if (f.size > 6 * 1024 * 1024) return alert('File too large (max 6MB)');
     setReceiptFile(f);
-    if (f.type && f.type.startsWith('image/')) {
-      const url = URL.createObjectURL(f);
-      setReceiptPreview(url);
-    } else {
-      setReceiptPreview(null);
-    }
   };
 
   const copyAccount = async () => {
@@ -103,13 +96,13 @@ export default function BuyCode() {
     setTimeout(() => {
       setLoading(false);
 
-      // NOTE: It's not possible for a client-side web app to open WhatsApp and automatically attach a file to the chat.
-      // WhatsApp's web API only supports prefilled text. The user will be redirected to the WhatsApp chat with a prepared message
-      // that asks the vendor to confirm and mentions the uploaded receipt filename. The user should then attach the receipt file
-      // manually in WhatsApp (or you must implement a server-side upload that hosts the receipt and include a link).
-
-      // Prepare message
-      const message = `Hello, I have paid ₦${CODE_PRICE.toLocaleString()}.\nName: ${name}\nPhone: ${phone}\nEmail: ${email}\nReceipt: ${receiptFile.name}\nPlease confirm and issue my activation code.`;
+      // Prepare message (note: file can't be auto-attached)
+      const message = `Hello, I have paid ₦${CODE_PRICE.toLocaleString()}.
+Name: ${name}
+Phone: ${phone}
+Email: ${email}
+Receipt: ${receiptFile.name}
+Please confirm and issue my activation code.`;
       const waLink = `https://wa.me/${WA.replace('+','')}?text=${encodeURIComponent(message)}`;
 
       // Open WhatsApp chat in new tab
@@ -128,6 +121,9 @@ export default function BuyCode() {
   const progress = countdown / TOTAL_SECONDS; // 1 -> full, 0 -> empty
   const dashOffset = circumference * (1 - progress);
 
+  // dashboard dark yellow (tailwind amber-700-ish)
+  const DASHBOARD_YELLOW = '#b45309';
+
   return (
     <Layout>
       <LogoHeader small />
@@ -136,13 +132,7 @@ export default function BuyCode() {
         <div className="card shadow-xl rounded-2xl p-6 space-y-6 bg-white">
           <h3 className="text-2xl font-bold text-center">🔑 Buy Activation Code</h3>
 
-          {/* Step indicator */}
-          <div className="flex items-center justify-center space-x-4">
-            <div className={`px-4 py-2 rounded-full ${step === 1 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>Step 1</div>
-            <div className={`px-4 py-2 rounded-full ${step === 2 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>Step 2</div>
-          </div>
-
-          {/* Step 1 */}
+          {/* Step 1 form */}
           {step === 1 && (
             <div className="space-y-4">
               <input className="input" placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} />
@@ -150,7 +140,7 @@ export default function BuyCode() {
               <input className="input" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
 
               <div className="flex space-x-3">
-                <button className="btn bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-xl shadow-md hover:scale-105 transition-transform flex-1"
+                <button className="btn bg-gradient-to-r from-yellow-500 to-yellow-600 text-white px-6 py-3 rounded-xl shadow-md hover:scale-105 transition-transform flex-1"
                         onClick={proceed}>Proceed 🚀</button>
                 <button className="btnGhost px-4 py-3 rounded-xl" onClick={() => { setName(''); setPhone(''); setEmail(''); }}>Clear</button>
               </div>
@@ -162,35 +152,33 @@ export default function BuyCode() {
             <div className="space-y-6">
 
               {/* Payment message */}
-              <div className="bg-blue-50 p-4 rounded-xl text-center shadow-md space-y-2">
+              <div className="bg-yellow-50 p-4 rounded-xl text-center shadow-md space-y-2">
                 <p className="text-gray-700 text-lg">Hello <b>{name}</b>, please make a one-time payment of <b>₦{CODE_PRICE.toLocaleString()}</b></p>
-                <p className="text-gray-500">to purchase your personal activation code.</p>
               </div>
 
-              {/* Bank account details with copy button */}
+              {/* Bank account details with copy button immediately before account number */}
               <div className="bg-white p-4 rounded-2xl shadow-lg border border-gray-200 space-y-2">
                 <p className="font-semibold text-center text-gray-800">Bank Details</p>
                 <hr className="my-2" />
                 <p>Account Name: <b>{ACCOUNT_NAME}</b></p>
-                <div className="flex items-center justify-between">
-                  <p>Account Number: <b className="tracking-wider">{ACCOUNT_NUMBER}</b></p>
-                  <div className="flex items-center space-x-2">
-                    <button onClick={copyAccount} className="px-3 py-1 rounded-md border border-gray-200 hover:bg-gray-50" aria-label="Copy account number">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M8 2a2 2 0 00-2 2v1H5a2 2 0 00-2 2v7a2 2 0 002 2h7a2 2 0 002-2v-1h1a2 2 0 002-2V8a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H8z" />
-                      </svg>
-                    </button>
-                    {copySuccess && <span className="text-sm text-green-600">{copySuccess}</span>}
-                  </div>
-                </div>
+                <p>
+                  Account Number:
+                  <button onClick={copyAccount} aria-label="Copy account number" className="ml-3 inline-flex items-center px-2 py-1 rounded-md border border-gray-200 hover:bg-gray-50">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M8 2a2 2 0 00-2 2v1H5a2 2 0 00-2 2v7a2 2 0 002 2h7a2 2 0 002-2v-1h1a2 2 0 002-2V8a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H8z" />
+                    </svg>
+                  </button>
+                  <b className="ml-3 tracking-wider">{ACCOUNT_NUMBER}</b>
+                  {copySuccess && <span className="ml-3 text-sm text-green-600">{copySuccess}</span>}
+                </p>
                 <p>Bank: <b>{BANK_NAME}</b></p>
                 <p>Amount: <b>₦{CODE_PRICE.toLocaleString()}</b></p>
                 <p>Status: <b>PROMO 85% Discount 🔥💸💰</b></p>
               </div>
 
-              {/* Circular countdown */}
+              {/* Circular countdown (text is white; stroke is dashboard yellow) */}
               <div className="flex items-center justify-center space-x-6 mt-4">
-                <div className="relative">
+                <div className="relative" aria-hidden>
                   <svg width="140" height="140" viewBox="0 0 140 140">
                     <g transform="translate(70,70)">
                       <circle r={radius} fill="transparent" stroke="#f1f5f9" strokeWidth="12" />
@@ -198,13 +186,13 @@ export default function BuyCode() {
                         r={radius}
                         fill="transparent"
                         strokeWidth="12"
-                        stroke={countdown <= 60 ? '#ef4444' : '#2563eb'}
+                        stroke={DASHBOARD_YELLOW}
                         strokeLinecap="round"
                         strokeDasharray={circumference}
                         strokeDashoffset={dashOffset}
-                        style={{ transition: 'stroke-dashoffset 0.9s linear, stroke 0.3s linear', transform: 'rotate(-90deg)' }}
+                        style={{ transition: 'stroke-dashoffset 0.9s linear', transform: 'rotate(-90deg)' }}
                       />
-                      <text x="0" y="6" textAnchor="middle" fontSize="22" fontWeight="700" fill={countdown <= 60 ? '#ef4444' : '#111827'}>
+                      <text x="0" y="6" textAnchor="middle" fontSize="22" fontWeight="700" fill="#ffffff">
                         {minutes}:{seconds}
                       </text>
                     </g>
@@ -217,39 +205,22 @@ export default function BuyCode() {
                 </div>
               </div>
 
-              {/* Upload receipt */}
+              {/* Upload receipt (no filename or preview shown; only upload button) */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">Upload Payment Receipt</label>
-                <div className="flex items-center space-x-3">
+                <label className="block text-sm font-medium text-gray-700">Upload Payment Receipt (max 6MB)</label>
+                <div>
                   <label className="cursor-pointer inline-flex items-center px-4 py-2 bg-white border rounded-lg shadow-sm hover:bg-gray-50">
                     <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFileChange} />
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor"><path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V7.414A2 2 0 0016.586 6L14 3.414A2 2 0 0012.586 3H4z"/></svg>
-                    <span className="text-sm">Choose file</span>
+                    <span className="text-sm font-medium">Upload receipt</span>
                   </label>
-                  <div className="text-sm text-gray-600">
-                    {receiptFile ? (
-                      <div>
-                        <div className="font-medium">{receiptFile.name}</div>
-                        <div className="text-xs text-gray-500">{(receiptFile.size/1024).toFixed(0)} KB</div>
-                      </div>
-                    ) : (
-                      <div className="text-gray-400">No file selected</div>
-                    )}
-                  </div>
                 </div>
-
-                {receiptPreview && (
-                  <div className="mt-2">
-                    <img src={receiptPreview} alt="preview" className="max-h-40 rounded-md border" />
-                  </div>
-                )}
               </div>
 
               {/* Actions */}
               <div className="space-y-2">
                 <div className="grid grid-cols-2 gap-3">
                   <button
-                    className={`col-span-2 btn bg-green-600 text-white px-6 py-3 rounded-xl shadow-md hover:scale-105 transition-transform ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className={`col-span-2 btn bg-yellow-600 text-white px-6 py-3 rounded-xl shadow-md hover:scale-105 transition-transform ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
                     onClick={confirmPayment}
                     disabled={loading}
                   >{loading ? 'Processing...' : 'Confirm Payment & Contact Vendor'}</button>
@@ -279,15 +250,7 @@ export default function BuyCode() {
 }
 
 /*
-  NOTES & NEXT STEPS for integration:
-  - Automatic attachment of files to a WhatsApp chat via a client-side redirect is NOT supported by WhatsApp Web/API.
-    To provide a truly "auto-send file" experience you will need a server-side component that:
-      1) receives the uploaded receipt file from the user,
-      2) stores it (S3, Cloudinary, or your server),
-      3) returns a public URL, and
-      4) the app includes that public URL in the WhatsApp prefilled message (or the vendor can open the URL to download).
-
-  - The current implementation stores the transaction locally using saveTx and opens WhatsApp
-    with a friendly, prefilled message that includes the uploaded receipt filename and user details. The user must attach the file
-    manually in WhatsApp or follow the vendor's instructions.
+  NOTES & NEXT STEPS:
+  - WhatsApp cannot accept automatic file attachments via a client-side redirect. To automatically include the receipt
+    you must implement a server-side upload that returns a public URL and include that URL in the WhatsApp message.
 */
