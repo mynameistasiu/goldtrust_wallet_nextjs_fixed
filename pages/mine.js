@@ -189,8 +189,8 @@ export default function Mine(){
           <svg className="progress-ring" viewBox="0 0 120 120" width="180" height="180" aria-hidden>
             <defs>
               <linearGradient id="g1" x1="0%" x2="100%">
-                <stop offset="0%" stopColor="#34D399" />
-                <stop offset="100%" stopColor="#10B981" />
+                <stop offset="0%" stopColor="#D4AF37" />
+                <stop offset="100%" stopColor="#B8871F" />
               </linearGradient>
             </defs>
             <circle cx="60" cy="60" r="48" stroke="#eee" strokeWidth="10" fill="none" />
@@ -207,27 +207,28 @@ export default function Mine(){
               style={{ transition: 'stroke-dashoffset 200ms linear' }}
             />
 
-            {/* inner circle/core */}
+            {/* inner filled circle */}
             <g>
-              <circle cx="60" cy="60" r="34" fill="#0f172a" opacity="0.04" />
+              <circle cx="60" cy="60" r="34" fill="#fffaf0" opacity="0.95" />
             </g>
 
-            {/* axe: simple emoji inside a foreignObject for easy animation */}
-            <foreignObject x="30" y="30" width="60" height="60">
-              <div className={`axe-wrap ${stage === 'mining' ? 'swing' : ''}`} style={{ width:60, height:60, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                <div className="axe">🪓</div>
-              </div>
-            </foreignObject>
+            {/* axe: custom SVG group (thicker, fills the inner circle) */}
+            <g transform="translate(60,60)" className={`axe-wrap ${stage === 'mining' ? 'swing' : ''}`}>
+              {/* handle */}
+              <rect x="10" y="-6" width="46" height="10" rx="5" transform="rotate(40) translate(-6,0)" fill="#6b4b11" />
+              {/* axe head */}
+              <path d="M-12,-20 C10,-34 34,-20 28,-6 C38,-2 30,12 14,10 C6,22 -12,20 -18,6 C-30,-2 -8,-6 -12,-20 Z" fill="#D4AF37" transform="scale(0.95) rotate(10)" />
+            </g>
 
             {/* percentage text in SVG for crispness */}
-            <text x="60" y="68" textAnchor="middle" fontSize="14" fontWeight="700" fill="#111">{progress}%</text>
+            <text x="60" y="68" textAnchor="middle" fontSize="14" fontWeight="700" fill="#8a5b00">{progress}%</text>
           </svg>
         </div>
 
         {/* linear progress + description */}
         <div className="mb-3">
           <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-            <div className="h-3 rounded-full" style={{ width: `${progress}%`, background: 'linear-gradient(90deg,#34D399,#10B981)', transition: 'width 200ms linear' }} />
+            <div className="h-3 rounded-full" style={{ width: `${progress}%`, background: 'linear-gradient(90deg,#D4AF37,#B8871F)', transition: 'width 200ms linear' }} />
           </div>
           <div className="text-xs muted mt-2">{stage === 'mining' ? `Mining... ${progress}%` : (stage === 'result' ? 'Result ready' : 'Press Start to mine')}</div>
         </div>
@@ -253,8 +254,8 @@ export default function Mine(){
 
           {stage === 'result' && (
             <div className="space-y-3">
-              <div className="p-4 bg-green-50 rounded-xl">
-                <div className="text-lg font-bold text-green-700">🎉 You mined {formatNaira(amount)}</div>
+              <div className="p-4 bg-yellow-50 rounded-xl">
+                <div className="text-lg font-bold" style={{color:'#8a5b00'}}>🎉 You mined {formatNaira(amount)}</div>
                 <div className="text-sm muted mt-1">Add it to your wallet to start using it.</div>
               </div>
 
@@ -270,11 +271,11 @@ export default function Mine(){
           )}
 
           {stage === 'claiming' && (
-            <div className="text-sm font-semibold text-amber-600">⏳ Claiming reward... please wait</div>
+            <div className="text-sm font-semibold" style={{color:'#b8871f'}}>⏳ Claiming reward... please wait</div>
           )}
 
           {stage === 'claimed' && (
-            <div className="text-lg font-bold text-green-600">🎊 Claimed! Redirecting...</div>
+            <div className="text-lg font-bold" style={{color:'#8a5b00'}}>🎊 Claimed! Redirecting...</div>
           )}
 
           {/* small dev reset (hidden in production) */}
@@ -286,28 +287,32 @@ export default function Mine(){
       </div>
 
       <style jsx>{`
+        :root { --app-gold: #D4AF37; --app-gold-dark: #8a5b00; --app-gold-mid: #B8871F; }
+
         .status-dot { width:10px; height:10px; border-radius:999px; }
-        .status-dot.idle { background:#10B981; box-shadow:0 0 8px rgba(16,185,129,0.15); }
-        .status-dot.mining { background:#f59e0b; box-shadow:0 0 8px rgba(245,158,11,0.12); }
+        .status-dot.idle { background:var(--app-gold-dark); box-shadow:0 0 8px rgba(216,165,34,0.12); }
+        .status-dot.mining { background:var(--app-gold); box-shadow:0 0 8px rgba(216,165,34,0.12); }
         .status-dot.done { background:#cbd5e1; }
 
         .mine-visual { display:flex; justify-content:center; }
-        .axe { font-size:28px; transform-origin:50% 50%; }
-        .axe-wrap.swing .axe { animation: axeSwing 700ms ease-in-out infinite; }
 
-        @keyframes axeSwing {
-          0% { transform: rotate(-18deg) translateY(-2px); }
-          50% { transform: rotate(24deg) translateY(0px); }
-          100% { transform: rotate(-18deg) translateY(-2px); }
+        /* axe group styling: make it bold and fill the inner circle nicely */
+        .axe-wrap { transform-origin: 60px 60px; }
+        .axe-wrap.swing { animation: swingSlow 700ms ease-in-out infinite; }
+
+        @keyframes swingSlow {
+          0% { transform: rotate(-12deg) translateY(-2px); }
+          50% { transform: rotate(18deg) translateY(1px); }
+          100% { transform: rotate(-12deg) translateY(-2px); }
         }
 
-        .btn-primary { background: linear-gradient(90deg,#10B981,#059669); color:white; border:none; padding:12px 22px; border-radius:12px; font-weight:700; box-shadow:0 10px 30px rgba(16,185,129,0.12); }
+        .btn-primary { background: linear-gradient(90deg,var(--app-gold),var(--app-gold-mid)); color:white; border:none; padding:12px 22px; border-radius:12px; font-weight:700; box-shadow:0 10px 30px rgba(216,165,34,0.12); }
         .btn-primary:hover { transform: translateY(-2px); }
         .btn-ghost { background:transparent; border:1px solid rgba(0,0,0,0.06); padding:10px 16px; border-radius:10px; }
         .tiny { font-size:12px; padding:6px 10px; }
 
         .badge { display:inline-block; padding:6px 10px; border-radius:999px; font-weight:700; font-size:13px; }
-        .badge.mining { background:linear-gradient(90deg,#f59e0b,#f97316); color:white; }
+        .badge.mining { background:linear-gradient(90deg,var(--app-gold),var(--app-gold-mid)); color:white; }
 
         /* small responsive */
         @media (max-width:520px){ .mine-visual svg{ width:140px; height:140px; } }
