@@ -1,22 +1,15 @@
-// pages/buy-code.js
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import LogoHeader from '../components/LogoHeader';
 import { saveTx } from '../utils/storage';
-import { loadTx } from '../utils/storage';
 
 const CODE_PRICE = 8000;
 const WA = '+2347072277091';
-const BANK = {
-  name: 'Moniepoint',
-  accountName: 'Abdulrahim Usman',
-  accountNumber: '6511699109'
-};
-
-function generateRef() {
-  return `GT-CODE-${String(Math.floor(100000 + Math.random() * 900000))}`;
-}
+const TOTAL_SECONDS = 10 * 60; // 10 minutes
+const ACCOUNT_NUMBER = '6511699109';
+const ACCOUNT_NAME = 'Abdulrahim Usman';
+const BANK_NAME = 'Moniepoint';
 
 export default function BuyCode() {
   const router = useRouter();
@@ -25,369 +18,267 @@ export default function BuyCode() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-
-  // payment / timer
-  const [countdown, setCountdown] = useState(10 * 60);
-  const timerRef = useRef(null);
-  const INITIAL = useRef(10 * 60);
-
-  // flow
-  const [paymentStatus, setPaymentStatus] = useState(null); // null | pending | under_review | approved
-  const [issuedCode, setIssuedCode] = useState(null);
-  const [reference, setReference] = useState('');
-
-  // receipt
-  const [receiptFile, setReceiptFile] = useState(null); // File object
-  const [receiptPreview, setReceiptPreview] = useState(null); // dataURL for preview
-  const [notes, setNotes] = useState('');
-
-  useEffect(() => {
-    setReference(generateRef());
-  }, []);
+  const [countdown, setCountdown] = useState(TOTAL_SECONDS);
+  const timerRef = useRef<number | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState(null); // null | pending | unsuccessful | success
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [copySuccess, setCopySuccess] = useState('');
 
   useEffect(() => {
     if (step === 2) {
-      setCountdown(INITIAL.current);
-      if (timerRef.current) clearInterval(timerRef.current);
-      timerRef.current = setInterval(() => {
-        setCountdown((c) => {
+      setCountdown(TOTAL_SECONDS);
+      if (timerRef.current) clearInterval(timerRef.current as any);
+      timerRef.current = window.setInterval(() => {
+        setCountdown(c => {
           if (c <= 1) {
-            clearInterval(timerRef.current);
+            if (timerRef.current) clearInterval(timerRef.current as any);
             return 0;
           }
           return c - 1;
         });
       }, 1000);
     }
-    return () => clearInterval(timerRef.current);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current as any);
+    };
   }, [step]);
+
+  const proceed = () => {
+    if (!name || !phone || !email) return alert('Please fill in all fields');
+    setStep(2);
+  };
+
+  const handleFileChange = (e) => {
+    const f = e.target.files?.[0] ?? null;
+    if (!f) return;
+    if (f.size > 6 * 1024 * 1024) return alert('File too large (max 6MB)');
+    setReceiptFile(f);
+    if (f.type.startsWith('image/')) {
+      const url = URL.createObjectURL(f);
+      setReceiptPreview(url);
+    } else {
+      setReceiptPreview(null);
+    }
+  };
+
+  const copyAccount = async () => {
+    try {
+      await navigator.clipboard.writeText(ACCOUNT_NUMBER);
+      setCopySuccess('Copied!');
+      setTimeout(() => setCopySuccess(''), 1500);
+    } catch (err) {
+      setCopySuccess('Failed to copy');
+      setTimeout(() => setCopySuccess(''), 1500);
+    }
+  };
+
+  const confirmPayment = async () => {
+    if (countdown === 0) return alert('⏳ Payment time expired! Restart process.');
+    if (!receiptFile) return alert('Please upload your payment receipt before confirming.');
+
+    setLoading(true);
+    setPaymentStatus('pending');
+
+    // Save transaction locally as pending. In a real app you would upload the receipt to your server or cloud storage
+    saveTx({
+      type: 'buy_code',
+      amount: CODE_PRICE,
+      status: 'pending',
+      meta: { name, phone, email, receiptName: receiptFile.name },
+      created_at: new Date().toISOString()
+    });
+
+    setTimeout(() => {
+      setLoading(false);
+
+      // NOTE: It's not possible for a client-side web app to open WhatsApp and automatically attach a file to the chat.
+      // WhatsApp's web API only supports prefilled text. The user will be redirected to the WhatsApp chat with a prepared message
+      // that asks the vendor to confirm and mentions the uploaded receipt filename. The user should then attach the receipt file
+      // manually in WhatsApp (or you must implement a server-side upload that hosts the receipt and include a link).
+
+      // Prepare message
+      const message = `Hello, I have paid ₦${CODE_PRICE.toLocaleString()}.\nName: ${name}\nPhone: ${phone}\nEmail: ${email}\nReceipt: ${receiptFile.name}\nPlease confirm and issue my activation code.`;
+      const waLink = `https://wa.me/${WA.replace('+','')}?text=${encodeURIComponent(message)}`;
+
+      // Open WhatsApp chat in new tab
+      window.open(waLink, '_blank');
+
+      setPaymentStatus('unsuccessful');
+    }, 1200);
+  };
 
   const minutes = String(Math.floor(countdown / 60)).padStart(2, '0');
   const seconds = String(countdown % 60).padStart(2, '0');
 
-  // SVG circle math
-  const R = 15; // radius
-  const C = 2 * Math.PI * R;
-  const dash = Math.max(0, Math.min(100, Math.round(((INITIAL.current - countdown) / INITIAL.current) * 100)));
-  const dashoffset = ((100 - dash) / 100) * C;
-
-  function copyToClipboard(text) {
-    try {
-      navigator.clipboard.writeText(text);
-      alert('Copied to clipboard');
-    } catch (e) {
-      prompt('Copy:', text);
-    }
-  }
-
-  function onPickFile(file) {
-    if (!file) return;
-    setReceiptFile(file);
-    setReceiptPreview(URL.createObjectURL(file));
-  }
-
-  async function shareReceipt(file, message) {
-    // try Web Share API with files first (best on mobile)
-    if (navigator.share && navigator.canShare && file) {
-      try {
-        const shareData = { files: [file], text: message };
-        if (navigator.canShare(shareData)) {
-          await navigator.share(shareData);
-          return { ok: true, method: 'web-share' };
-        }
-      } catch (e) {
-        // fallback below
-      }
-    }
-
-    // fallback: open wa.me with prefilled text (cannot attach file automatically)
-    const url = `https://wa.me/${WA.replace('+', '')}?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
-    return { ok: false, method: 'wa-link' };
-  }
-
-  const handleProceed = () => {
-    if (!name.trim() || !phone.trim() || !email.trim()) return alert('Please fill in all fields');
-    setStep(2);
-    setReference(generateRef());
-    // timer starts via effect
-  };
-
-  const handleSubmitProofAndContact = async () => {
-    if (!receiptFile) return alert('Please upload your payment receipt image first.');
-    if (countdown === 0) return alert('Payment time expired. Restart the process.');
-
-    setLoading(true);
-
-    // save pending tx locally
-    const tx = {
-      type: 'buy_code',
-      amount: CODE_PRICE,
-      status: 'pending',
-      reference,
-      meta: { name, phone, email, notes: notes || '' },
-      // avoid storing full file to localStorage; only store metadata
-      receiptName: receiptFile.name,
-      created_at: new Date().toISOString(),
-    };
-    try {
-      saveTx(tx);
-    } catch (e) {
-      // ignore storage errors
-    }
-
-    const message = `Hello, I have made payment for activation code.\nReference: ${reference}\nName: ${name}\nPhone: ${phone}\nAmount: ₦${CODE_PRICE.toLocaleString()}\nNote: ${notes || '-'}`;
-
-    try {
-      const res = await shareReceipt(receiptFile, message);
-      setPaymentStatus('pending');
-      if (res.ok && res.method === 'web-share') {
-        alert('Share sheet opened. Choose WhatsApp to send your receipt to the vendor.');
-      } else {
-        alert('WhatsApp opened with a prefilled message. Please attach your receipt image and send.');
-      }
-    } catch (e) {
-      // fallback
-      window.open(`https://wa.me/${WA.replace('+', '')}?text=${encodeURIComponent(message)}`, '_blank');
-      setPaymentStatus('pending');
-      alert('Opened WhatsApp. Please attach the receipt and send the message.');
-    }
-
-    setLoading(false);
-  };
-
-  // helper to generate preview and revoke object URL when component unmounts or file changes
-  useEffect(() => {
-    return () => {
-      if (receiptPreview) URL.revokeObjectURL(receiptPreview);
-    };
-  }, [receiptPreview]);
+  // For circular timer
+  const radius = 54;
+  const circumference = 2 * Math.PI * radius;
+  const progress = countdown / TOTAL_SECONDS; // 1 -> full, 0 -> empty
+  const dashOffset = circumference * (1 - progress);
 
   return (
     <Layout>
       <LogoHeader small />
-      <div className="card max-w-2xl mx-auto p-6 rounded-2xl shadow-xl dark-card">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-2xl font-bold">🔑 Buy Activation Code</h3>
-          <div className="text-sm muted">Step {step} / 2</div>
-        </div>
 
-        {/* step indicator */}
-        <div className="flex items-center gap-3 mb-6">
-          <div className={`step ${step === 1 ? 'active' : ''}`} onClick={() => setStep(1)}>
-            <div className="num">1</div>
-            <div className="label">Info</div>
+      <div className="max-w-xl mx-auto p-6">
+        <div className="card shadow-xl rounded-2xl p-6 space-y-6 bg-white">
+          <h3 className="text-2xl font-bold text-center">🔑 Buy Activation Code</h3>
+
+          {/* Step indicator */}
+          <div className="flex items-center justify-center space-x-4">
+            <div className={`px-4 py-2 rounded-full ${step === 1 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>Step 1</div>
+            <div className={`px-4 py-2 rounded-full ${step === 2 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>Step 2</div>
           </div>
-          <div className={`bar ${step === 2 ? 'active' : ''}`} />
-          <div className={`step ${step === 2 ? 'active' : ''}`} onClick={() => step === 2 && setStep(2)}>
-            <div className="num">2</div>
-            <div className="label">Pay & Verify</div>
-          </div>
-        </div>
 
-        {/* STEP 1 */}
-        {step === 1 && (
-          <div className="space-y-4">
-            <input className="input" placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} />
-            <input className="input" placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-            <input className="input" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          {/* Step 1 */}
+          {step === 1 && (
+            <div className="space-y-4">
+              <input className="input" placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} />
+              <input className="input" placeholder="Phone" value={phone} onChange={e => setPhone(e.target.value)} />
+              <input className="input" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
 
-            <div className="flex gap-3 items-center">
-              <button className="btn-filled" onClick={handleProceed}>Proceed & Verify</button>
-              <button className="btn-ghost" onClick={() => { setName(''); setPhone(''); setEmail(''); }}>Clear</button>
-            </div>
-
-            <div className="trust">
-              <div className="small muted">Why verify?</div>
-              <ul className="text-sm">
-                <li>• We need correct details to issue your unique code.</li>
-                <li>• Verification reduces delays when admin issues codes.</li>
-                <li>• Support is available on WhatsApp if you get stuck.</li>
-              </ul>
-            </div>
-          </div>
-        )}
-
-        {/* STEP 2 */}
-        {step === 2 && (
-          <div className="space-y-6">
-            {/* Payment banner */}
-            <div className="banner">
-              <div>
-                <div className="muted">Hello</div>
-                <div className="font-bold text-lg">{name || 'Customer'}</div>
-                <div className="muted">Please make a one-time payment of</div>
-                <div className="amount">₦{CODE_PRICE.toLocaleString()}</div>
-              </div>
-              <div>
-                <div className="muted text-xs">Reference</div>
-                <div className="ref small">{reference}</div>
+              <div className="flex space-x-3">
+                <button className="btn bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-xl shadow-md hover:scale-105 transition-transform flex-1"
+                        onClick={proceed}>Proceed 🚀</button>
+                <button className="btnGhost px-4 py-3 rounded-xl" onClick={() => { setName(''); setPhone(''); setEmail(''); }}>Clear</button>
               </div>
             </div>
+          )}
 
-            {/* vendor / bank info + copy */}
-            <div className="vendor p-4 rounded-xl shadow-md">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="small muted">Official Vendor</div>
-                  <div className="vendor-name">{BANK.accountName}</div>
-                  <div className="muted small">{BANK.name}</div>
+          {/* Step 2 */}
+          {step === 2 && (
+            <div className="space-y-6">
+
+              {/* Payment message */}
+              <div className="bg-blue-50 p-4 rounded-xl text-center shadow-md space-y-2">
+                <p className="text-gray-700 text-lg">Hello <b>{name}</b>, please make a one-time payment of <b>₦{CODE_PRICE.toLocaleString()}</b></p>
+                <p className="text-gray-500">to purchase your personal activation code.</p>
+              </div>
+
+              {/* Bank account details with copy button */}
+              <div className="bg-white p-4 rounded-2xl shadow-lg border border-gray-200 space-y-2">
+                <p className="font-semibold text-center text-gray-800">Bank Details</p>
+                <hr className="my-2" />
+                <p>Account Name: <b>{ACCOUNT_NAME}</b></p>
+                <div className="flex items-center justify-between">
+                  <p>Account Number: <b className="tracking-wider">{ACCOUNT_NUMBER}</b></p>
+                  <div className="flex items-center space-x-2">
+                    <button onClick={copyAccount} className="px-3 py-1 rounded-md border border-gray-200 hover:bg-gray-50">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M8 2a2 2 0 00-2 2v1H5a2 2 0 00-2 2v7a2 2 0 002 2h7a2 2 0 002-2v-1h1a2 2 0 002-2V8a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H8z" />
+                      </svg>
+                    </button>
+                    {copySuccess && <span className="text-sm text-green-600">{copySuccess}</span>}
+                  </div>
+                </div>
+                <p>Bank: <b>{BANK_NAME}</b></p>
+                <p>Amount: <b>₦{CODE_PRICE.toLocaleString()}</b></p>
+                <p>Status: <b>PROMO 85% Discount 🔥💸💰</b></p>
+              </div>
+
+              {/* Circular countdown */}
+              <div className="flex items-center justify-center space-x-6 mt-4">
+                <div className="relative">
+                  <svg width="140" height="140" viewBox="0 0 140 140">
+                    <defs></defs>
+                    <g transform="translate(70,70)">
+                      <circle r={radius} fill="transparent" stroke="#f1f5f9" strokeWidth="12" />
+                      <circle
+                        r={radius}
+                        fill="transparent"
+                        strokeWidth="12"
+                        stroke={countdown <= 60 ? '#ef4444' : '#2563eb'}
+                        strokeLinecap="round"
+                        strokeDasharray={circumference}
+                        strokeDashoffset={dashOffset}
+                        style={{ transition: 'stroke-dashoffset 0.9s linear, stroke 0.3s linear', transform: 'rotate(-90deg)' }}
+                      />
+                      <text x="0" y="6" textAnchor="middle" fontSize="22" fontWeight="700" fill={countdown <= 60 ? '#ef4444' : '#111827'}>
+                        {minutes}:{seconds}
+                      </text>
+                    </g>
+                  </svg>
                 </div>
 
-                <div className="text-right">
-                  <div className="small muted">Amount</div>
-                  <div className="font-semibold">₦{CODE_PRICE.toLocaleString()}</div>
+                <div className="text-left">
+                  <p className="font-semibold">Time left to complete payment</p>
+                  <p className="text-sm text-gray-500">This session will expire in {minutes}:{seconds}</p>
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
-                <div>
-                  <div className="muted small">Account number</div>
-                  <div className="acct-row">
-                    <div className="acct">{BANK.accountNumber}</div>
-                    <button className="copy-btn" onClick={() => copyToClipboard(BANK.accountNumber)}>Copy</button>
+              {/* Upload receipt */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Upload Payment Receipt</label>
+                <div className="flex items-center space-x-3">
+                  <label className="cursor-pointer inline-flex items-center px-4 py-2 bg-white border rounded-lg shadow-sm hover:bg-gray-50">
+                    <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFileChange} />
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor"><path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V7.414A2 2 0 0016.586 6L14 3.414A2 2 0 0012.586 3H4z"/></svg>
+                    <span className="text-sm">Choose file</span>
+                  </label>
+                  <div className="text-sm text-gray-600">
+                    {receiptFile ? (
+                      <div>
+                        <div className="font-medium">{receiptFile.name}</div>
+                        <div className="text-xs text-gray-500">{(receiptFile.size/1024).toFixed(0)} KB</div>
+                      </div>
+                    ) : (
+                      <div className="text-gray-400">No file selected</div>
+                    )}
                   </div>
                 </div>
 
-                <div>
-                  <div className="muted small">Bank</div>
-                  <div className="acct">{BANK.name}</div>
+                {receiptPreview && (
+                  <div className="mt-2">
+                    <img src={receiptPreview} alt="preview" className="max-h-40 rounded-md border" />
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    className={`col-span-2 btn bg-green-600 text-white px-6 py-3 rounded-xl shadow-md hover:scale-105 transition-transform ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    onClick={confirmPayment}
+                    disabled={loading}
+                  >{loading ? 'Processing...' : 'Confirm Payment & Contact Vendor'}</button>
+                </div>
+
+                <div className="flex justify-between">
+                  <button className="btnGhost px-4 py-2 rounded-xl" onClick={() => setStep(1)}>Back</button>
+                  <a className="btnGhost px-4 py-2 rounded-xl" href={`https://wa.me/${WA.replace('+','')}`} target="_blank" rel="noreferrer">Contact Vendor (WhatsApp)</a>
                 </div>
               </div>
 
-              <div className="mt-3">
-                <div className="muted small">Tip</div>
-                <div className="muted text-xs">Pay from your bank app and upload a clear receipt showing account name, number and amount for faster verification.</div>
-              </div>
             </div>
+          )}
 
-            {/* upload + countdown panel */}
-            <div className="upload-area p-4 rounded-xl shadow-md flex flex-col md:flex-row gap-4 items-center">
-              <div className="countdown-block flex-shrink-0">
-                <svg viewBox="0 0 36 36" className="count-svg">
-                  <circle cx="18" cy="18" r={R} stroke="rgba(255,255,255,0.06)" strokeWidth="2" fill="none" />
-                  <circle
-                    cx="18"
-                    cy="18"
-                    r={R}
-                    stroke="url(#ggrad)"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    fill="none"
-                    strokeDasharray={`${C}`}
-                    strokeDashoffset={dashoffset}
-                    transform="rotate(-90 18 18)"
-                    style={{ transition: 'stroke-dashoffset 500ms linear' }}
-                  />
-                  <defs>
-                    <linearGradient id="ggrad" x1="0%" x2="100%">
-                      <stop offset="0%" stopColor="#D4AF37" />
-                      <stop offset="100%" stopColor="#B8871F" />
-                    </linearGradient>
-                  </defs>
-                  <text x="18" y="20.5" fontSize="5" textAnchor="middle" fill="#f8fafc">{minutes}:{seconds}</text>
-                </svg>
-              </div>
-
-              <div className="flex-1">
-                <div className="mb-2">
-                  <label className="muted small">Upload payment receipt (jpg/png)</label>
-                </div>
-
-                <div className="flex gap-3 items-center">
-                  <input id="receipt-input" type="file" accept="image/*" onChange={(e) => onPickFile(e.target.files?.[0])} className="file-input" />
-                  <button className="btn-ghost" onClick={() => document.getElementById('receipt-input')?.click()}>Choose file</button>
-                  {receiptFile && <div className="preview inline-flex items-center gap-2"><img src={receiptPreview} alt="receipt" className="thumb" /> <span className="small">{receiptFile.name}</span></div>}
-                </div>
-
-                <textarea className="input mt-3" placeholder="Optional note (teller name, bank name)" value={notes} onChange={e => setNotes(e.target.value)} />
-
-                <div className="mt-4 flex gap-3">
-                  <button className={`btn-filled ${loading ? 'disabled' : ''}`} onClick={handleSubmitProofAndContact} disabled={loading}>
-                    {loading ? 'Processing...' : 'Confirm Payment & Contact Vendor'}
-                  </button>
-
-                  <a className="btn-ghost" href={`https://wa.me/${WA.replace('+','')}?text=${encodeURIComponent(`Hello, I want help with my activation purchase. Reference: ${reference} - Name: ${name} - Phone: ${phone}`)}`} target="_blank" rel="noreferrer">
-                    Contact Support (WhatsApp)
-                  </a>
-                </div>
-
-                <div className="mt-2 text-xs muted">We will mark payment as pending until vendor verifies your receipt. Expected manual verification 5–30 minutes.</div>
-              </div>
+          {/* Payment pending instructions */}
+          {paymentStatus === 'unsuccessful' && (
+            <div className="bg-yellow-50 p-4 rounded-lg text-center">
+              <h4 className="font-semibold text-yellow-700">⚠️ Payment Pending</h4>
+              <p className="text-sm text-gray-600">Your payment is pending verification. You have been redirected to WhatsApp with payment details — please attach your receipt in the chat so the vendor can confirm and issue your activation code.</p>
             </div>
+          )}
 
-            {/* status */}
-            <div>
-              {paymentStatus === 'pending' && <div className="status pending">✅ Payment submitted — pending verification</div>}
-              {paymentStatus === 'under_review' && <div className="status review">🔎 Under review — we will notify you</div>}
-              {paymentStatus === 'approved' && <div className="status approved">🎉 Approved — code: <b>{issuedCode}</b></div>}
-            </div>
-          </div>
-        )}
-
+        </div>
       </div>
-
-      <style jsx>{`
-        :root{
-          --app-gold:#D4AF37;
-          --app-gold-dark:#B8871F;
-          --card-dark:#071022;
-          --muted:#cbd5e1;
-        }
-        .dark-card{
-          background: linear-gradient(180deg, rgba(10,14,20,0.85), rgba(8,12,18,0.88));
-          color:var(--muted);
-        }
-        .muted { color:var(--muted); }
-        .small { font-size:12px; }
-
-        /* step indicator */
-        .step { display:flex; flex-direction:column; align-items:center; gap:6px; cursor:pointer; padding:10px; border-radius:10px; width:84px; }
-        .step .num { width:36px; height:36px; border-radius:999px; display:flex; align-items:center; justify-content:center; border:1px solid rgba(255,255,255,0.05); color:var(--muted); background:transparent; font-weight:800;}
-        .step .label { color:var(--muted); font-size:13px; }
-        .step.active .num { background: linear-gradient(90deg,var(--app-gold),var(--app-gold-dark)); color:#071022; border:none; }
-        .bar { flex:1; height:10px; border-radius:8px; background: rgba(255,255,255,0.02); }
-        .bar.active { background: linear-gradient(90deg,var(--app-gold),var(--app-gold-dark)); }
-
-        /* inputs / buttons */
-        .input { width:100%; padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.04); background:transparent; color:var(--muted); }
-        .btn-filled { background: linear-gradient(90deg,var(--app-gold),var(--app-gold-dark)); color:#071022; padding:10px 16px; border-radius:10px; font-weight:800; border:none; }
-        .btn-ghost { background:transparent; border:1px solid rgba(255,255,255,0.06); color:var(--muted); padding:8px 12px; border-radius:8px; }
-        .btn-ghost:hover, .btn-filled:hover { transform: translateY(-2px); transition: transform .15s ease; }
-
-        .trust { padding:12px; border-radius:8px; border:1px solid rgba(255,255,255,0.02); }
-
-        /* banner */
-        .banner { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:14px; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:12px; border:1px solid rgba(255,255,255,0.03); }
-        .amount { font-weight:900; font-size:20px; color:#fff; margin-top:6px; }
-        .ref { font-family:monospace; background: rgba(255,255,255,0.02); padding:6px 8px; border-radius:8px; display:inline-block; margin-top:6px; }
-
-        /* vendor */
-        .vendor { border-radius:12px; background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.015)); padding:16px; border:1px solid rgba(255,255,255,0.03); }
-        .vendor-name { font-weight:800; font-size:16px; color:#fff; }
-        .acct-row { display:flex; gap:8px; align-items:center; margin-top:6px; }
-        .acct { font-family:monospace; padding:8px; background:rgba(255,255,255,0.02); border-radius:8px; color:var(--muted); }
-        .copy-btn { background: linear-gradient(90deg,var(--app-gold),var(--app-gold-dark)); color:#071022; border:none; padding:6px 8px; border-radius:8px; font-weight:700; }
-
-        /* upload area */
-        .upload-area { border-radius:12px; background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.015)); border:1px solid rgba(255,255,255,0.03); padding:12px; }
-        .count-svg { width:72px; height:72px; display:block; }
-        .file-input { color:var(--muted); }
-        .thumb { width:48px; height:48px; object-fit:cover; border-radius:6px; border:1px solid rgba(255,255,255,0.04); }
-
-        .acct, .ref, .thumb { background-clip: padding-box; }
-
-        .status { padding:10px; border-radius:8px; }
-        .status.pending { background: rgba(212,175,55,0.08); color:var(--muted); }
-        .status.approved { background: rgba(16,185,129,0.08); color: #baf7c8; }
-
-        .disabled { opacity:0.6; pointer-events:none; }
-
-        @media (max-width:720px) {
-          .banner { flex-direction:column; align-items:flex-start; gap:6px; }
-          .upload-area { flex-direction:column; align-items:flex-start; }
-        }
-      `}</style>
     </Layout>
   );
 }
+
+/*
+  NOTES & NEXT STEPS for integration:
+  - Automatic attachment of files to a WhatsApp chat via a client-side redirect is NOT supported by WhatsApp Web/API.
+    To provide a truly "auto-send file" experience you will need a server-side component that:
+      1) receives the uploaded receipt file from the user,
+      2) stores it (S3, Cloudinary, or your server),
+      3) returns a public URL, and
+      4) the app includes that public URL in the WhatsApp prefilled message (or the vendor can open the URL to download).
+
+  - The current implementation stores the transaction locally using saveTx (keeps the existing behavior) and opens WhatsApp
+    with a friendly, prefilled message that includes the uploaded receipt filename and user details. The user must attach the file
+    manually in WhatsApp or follow the vendor's instructions.
+*/
