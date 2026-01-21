@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import LogoHeader from '../components/LogoHeader';
 import { saveTx } from '../utils/storage';
@@ -12,27 +11,26 @@ const ACCOUNT_NAME = 'Abdulrahim Usman';
 const BANK_NAME = 'Moniepoint';
 
 export default function BuyCode() {
-  const router = useRouter();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [countdown, setCountdown] = useState(TOTAL_SECONDS);
-  const timerRef = useRef<number | null>(null);
+  const timerRef = useRef(null);
   const [paymentStatus, setPaymentStatus] = useState(null); // null | pending | unsuccessful | success
-  const [receiptFile, setReceiptFile] = useState<File | null>(null);
-  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [receiptFile, setReceiptFile] = useState(null);
+  const [receiptPreview, setReceiptPreview] = useState(null);
   const [copySuccess, setCopySuccess] = useState('');
 
   useEffect(() => {
     if (step === 2) {
       setCountdown(TOTAL_SECONDS);
-      if (timerRef.current) clearInterval(timerRef.current as any);
-      timerRef.current = window.setInterval(() => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = setInterval(() => {
         setCountdown(c => {
           if (c <= 1) {
-            if (timerRef.current) clearInterval(timerRef.current as any);
+            if (timerRef.current) clearInterval(timerRef.current);
             return 0;
           }
           return c - 1;
@@ -41,7 +39,7 @@ export default function BuyCode() {
     }
 
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current as any);
+      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [step]);
 
@@ -55,7 +53,7 @@ export default function BuyCode() {
     if (!f) return;
     if (f.size > 6 * 1024 * 1024) return alert('File too large (max 6MB)');
     setReceiptFile(f);
-    if (f.type.startsWith('image/')) {
+    if (f.type && f.type.startsWith('image/')) {
       const url = URL.createObjectURL(f);
       setReceiptPreview(url);
     } else {
@@ -65,9 +63,21 @@ export default function BuyCode() {
 
   const copyAccount = async () => {
     try {
-      await navigator.clipboard.writeText(ACCOUNT_NUMBER);
-      setCopySuccess('Copied!');
-      setTimeout(() => setCopySuccess(''), 1500);
+      if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(ACCOUNT_NUMBER);
+        setCopySuccess('Copied!');
+        setTimeout(() => setCopySuccess(''), 1500);
+      } else {
+        // fallback
+        const el = document.createElement('textarea');
+        el.value = ACCOUNT_NUMBER;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        setCopySuccess('Copied!');
+        setTimeout(() => setCopySuccess(''), 1500);
+      }
     } catch (err) {
       setCopySuccess('Failed to copy');
       setTimeout(() => setCopySuccess(''), 1500);
@@ -165,7 +175,7 @@ export default function BuyCode() {
                 <div className="flex items-center justify-between">
                   <p>Account Number: <b className="tracking-wider">{ACCOUNT_NUMBER}</b></p>
                   <div className="flex items-center space-x-2">
-                    <button onClick={copyAccount} className="px-3 py-1 rounded-md border border-gray-200 hover:bg-gray-50">
+                    <button onClick={copyAccount} className="px-3 py-1 rounded-md border border-gray-200 hover:bg-gray-50" aria-label="Copy account number">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                         <path d="M8 2a2 2 0 00-2 2v1H5a2 2 0 00-2 2v7a2 2 0 002 2h7a2 2 0 002-2v-1h1a2 2 0 002-2V8a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H8z" />
                       </svg>
@@ -182,7 +192,6 @@ export default function BuyCode() {
               <div className="flex items-center justify-center space-x-6 mt-4">
                 <div className="relative">
                   <svg width="140" height="140" viewBox="0 0 140 140">
-                    <defs></defs>
                     <g transform="translate(70,70)">
                       <circle r={radius} fill="transparent" stroke="#f1f5f9" strokeWidth="12" />
                       <circle
@@ -278,7 +287,7 @@ export default function BuyCode() {
       3) returns a public URL, and
       4) the app includes that public URL in the WhatsApp prefilled message (or the vendor can open the URL to download).
 
-  - The current implementation stores the transaction locally using saveTx (keeps the existing behavior) and opens WhatsApp
+  - The current implementation stores the transaction locally using saveTx and opens WhatsApp
     with a friendly, prefilled message that includes the uploaded receipt filename and user details. The user must attach the file
     manually in WhatsApp or follow the vendor's instructions.
 */
