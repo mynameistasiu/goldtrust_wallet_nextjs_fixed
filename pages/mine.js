@@ -150,20 +150,6 @@ export default function Mine(){
     }, 2500);
   };
 
-  const resetMineForDev = ()=>{
-    // dev helper to reset mining (keeps UX friendly)
-    try{
-      localStorage.removeItem(LK_AMT);
-      localStorage.removeItem(LK_START);
-      localStorage.removeItem(LK_END);
-      localStorage.removeItem(LK_MINED);
-    }catch(e){}
-    setStage('idle');
-    setProgress(0);
-    setAmount(0);
-    setHasMined(false);
-  };
-
   if(!user) return (
     <Layout>
       <div className="center"><div className="card animate-pulse">Loading...</div></div>
@@ -261,7 +247,6 @@ export default function Mine(){
 
               <div className="flex gap-3 justify-center">
                 <button className="btn-primary" onClick={()=>claim()}>Claim to Wallet ✅</button>
-                <button className="btn-ghost" onClick={()=>{ navigator.share ? navigator.share({ title: 'I mined on GoldTrust', text: `I mined ${formatNaira(amount)} on GoldTrust Wallet`, url: window.location.href }) : alert('Share this: ' + formatNaira(amount)); }}>Share</button>
               </div>
             </div>
           )}
@@ -278,10 +263,6 @@ export default function Mine(){
             <div className="text-lg font-bold" style={{color:'#8a5b00'}}>🎊 Claimed! Redirecting...</div>
           )}
 
-          {/* small dev reset (hidden in production) */}
-          <div className="mt-4">
-            <button className="btn-ghost tiny" onClick={resetMineForDev}>Reset (dev)</button>
-          </div>
         </div>
 
       </div>
