@@ -6,8 +6,8 @@ import { saveTx } from '../utils/storage';
 const CODE_PRICE = 8000;
 const WA = '+2347072277091';
 const TOTAL_SECONDS = 10 * 60; // 10 minutes
-const ACCOUNT_NUMBER = '6511699109';
-const ACCOUNT_NAME = 'Abdulrahim Usman';
+const ACCOUNT_NUMBER = '6569671131';
+const ACCOUNT_NAME = 'Abdullahi Shaibu';
 const BANK_NAME = 'Moniepoint';
 
 export default function BuyCode() {
