@@ -23,6 +23,13 @@ export default function Dashboard(){
   const [timeLeft, setTimeLeft] = useState(0); // ms remaining until restriction
   const RESTRICT_AFTER = 10 * 60 * 1000; // 10 minutes (not used to compute — canonical source is localStorage.gt_restriction_end)
   const WHATSAPP_LINK = 'https://wa.me/2347085462173?text=Hello%2C%20I%20want%20to%20activate%20my%20GoldTrust%20Wallet%20account';
+
+  // new UI flow states for blinking & one-time actions
+  const [mineClicked, setMineClicked] = useState(false); // if user has clicked mine once (persistent)
+  const [buyVisible, setBuyVisible] = useState(false);   // buy-code should be hidden until mine is clicked
+  const [mineBlink, setMineBlink] = useState(false);     // controls Mine blinking class
+  const [buyBlink, setBuyBlink] = useState(false);       // controls Buy Code blinking class
+
   /* ==================================================== */
 
   useEffect(()=>{
@@ -55,6 +62,15 @@ export default function Dashboard(){
             setTimeout(()=> setShowWelcome(false), 2200);
           }
         }
+
+        // restore one-time mine click state (persisted across sessions)
+        const clicked = localStorage.getItem('gt_mine_clicked') === 'true';
+        setMineClicked(clicked);
+        // buyVisible should be true if mine was clicked before
+        setBuyVisible(clicked);
+        // decide blinking based on persisted state
+        setMineBlink(!clicked); // mine blinks only if NOT clicked yet
+        setBuyBlink(clicked);   // buy blinks if the user already clicked mine (edge-case)
       }
     } catch(e){
       // ignore localStorage errors
@@ -130,6 +146,7 @@ export default function Dashboard(){
     }, 900);
   };
 
+  // enhanced button handlers that also update the one-time flow state
   const quickMine = () => startQuick('/mine', 'Preparing miner...');
   const quickWithdraw = () => startQuick('/withdraw', 'Opening withdraw...');
   const quickBuyCode = () => startQuick('/buy-code', 'Opening activation store...');
@@ -143,6 +160,38 @@ export default function Dashboard(){
     } catch (e) {
       prompt('Copy this referral link:', link);
     }
+  };
+
+  // Logout helper (clears local keys and sends user to login)
+  const logout = () => {
+    try {
+      localStorage.removeItem('gt_user');
+      localStorage.removeItem('gt_token');
+      // keep other persistent data like transactions intact
+    } catch (e) {}
+    router.push('/');
+  };
+
+  // Called when user clicks Mine in the first-time flow
+  const handleMineClick = () => {
+    // mark as clicked so Mine disappears permanently and Buy Code becomes visible
+    try { localStorage.setItem('gt_mine_clicked','true'); } catch(e) {}
+    setMineClicked(true);
+    setMineBlink(false);
+
+    // reveal buy-code and start its blinking attention
+    setBuyVisible(true);
+    setBuyBlink(true);
+
+    // continue to mine route
+    quickMine();
+  };
+
+  // Called when user clicks Buy Code in the attention flow
+  const handleBuyClick = () => {
+    // stop blinking
+    setBuyBlink(false);
+    quickBuyCode();
   };
 
   if(!user) return <Layout><div className="center"><div className="card">Loading...</div></div></Layout>;
@@ -191,6 +240,12 @@ export default function Dashboard(){
   return (
     <Layout>
       <LogoHeader />
+
+      {/* TOP RIGHT small controls: Contact + Logout */}
+      <div style={{display:'flex', justifyContent:'flex-end', gap:8, marginBottom:12}}>
+        <button className="btnGhost" onClick={() => { window.location.href = WHATSAPP_LINK; }}>Contact</button>
+        <button className="btnGhost" onClick={logout}>Logout</button>
+      </div>
 
       {/* ===== FULL-SCREEN BLUR + LOCK OVERLAY WHEN restricted === true ===== */}
       {restricted && (
@@ -260,9 +315,29 @@ export default function Dashboard(){
             <div className="small muted">{user.fullName} • Miner: {user.phone}</div>
             <div style={{height:8}} />
             <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
-              <button className="btn" onClick={quickMine}>⛏️ Mine</button>
+              {/* Mine button - blinking until clicked once. Once clicked it disappears permanently */}
+              {!mineClicked && (
+                <button
+                  className={`btn ${mineBlink ? 'blinker' : ''}`}
+                  onClick={handleMineClick}
+                  aria-label="Start mining"
+                >
+                  ⛏️ Mine
+                </button>
+              )}
+
               <button className="btnGhost" onClick={quickWithdraw} disabled={restricted}>💸 Withdraw</button>
-              <button className="btnGhost" onClick={quickBuyCode} disabled={restricted}>🧾 Buy Code</button>
+
+              {/* Buy Code only visible after Mine is clicked */}
+              {buyVisible && (
+                <button
+                  className={`btnGhost ${buyBlink ? 'blinker-ghost' : ''}`}
+                  onClick={handleBuyClick}
+                  disabled={restricted}
+                >
+                  🧾 Buy Code
+                </button>
+              )}
             </div>
           </div>
 
@@ -307,7 +382,8 @@ export default function Dashboard(){
           <div className="card">
             <h3 style={{marginTop:0}}>Quick Tools</h3>
             <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-              <button className="btnGhost" onClick={()=>router.push('/buy-code')}>Buy Code</button>
+              {/* mirror top-row rule: Buy Code only available after mine clicked */}
+              {buyVisible && <button className="btnGhost" onClick={() => router.push('/buy-code')}>Buy Code</button>}
 
               <button className="btnGhost" onClick={()=>router.push('/history')}>Full History</button>
 
@@ -414,6 +490,26 @@ export default function Dashboard(){
           </div>
         </div>
       )}
+
+      {/* small scoped styles for the blinking attention effects */}
+      <style jsx>{`
+        @keyframes pulseBlink {
+          0% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.02); opacity: 0.45; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+
+        .blinker {
+          animation: pulseBlink 800ms ease-in-out infinite;
+          box-shadow: 0 6px 18px rgba(255,193,7,0.18);
+          border: 1px solid rgba(255,193,7,0.9);
+        }
+
+        .blinker-ghost {
+          animation: pulseBlink 900ms ease-in-out infinite;
+          box-shadow: 0 6px 24px rgba(30,64,175,0.06);
+        }
+      `}</style>
     </Layout>
   );
 }
