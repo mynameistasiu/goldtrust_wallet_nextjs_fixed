@@ -4,11 +4,11 @@ import LogoHeader from '../components/LogoHeader';
 import { saveTx } from '../utils/storage';
 
 const CODE_PRICE = 8000;
-const WA = '+2347072277091';
+const WA = '+2348136347797';
 const TOTAL_SECONDS = 10 * 60; // 10 minutes
-const ACCOUNT_NUMBER = '6569671131';
-const ACCOUNT_NAME = 'Abdullahi Shaibu';
-const BANK_NAME = 'Moniepoint';
+const ACCOUNT_NUMBER = '2082683908';
+const ACCOUNT_NAME = 'Abdulrahim Usman';
+const BANK_NAME = 'Kuda Bank';
 
 export default function BuyCode() {
   const [step, setStep] = useState(1);
