@@ -3,7 +3,7 @@ import Layout from '../components/Layout';
 import LogoHeader from '../components/LogoHeader';
 import { saveTx } from '../utils/storage';
 
-const CODE_PRICE = 5500;
+const CODE_PRICE = 8000;
 const WA = '+2348136347797';
 const TOTAL_SECONDS = 10 * 60; // 10 minutes
 const ACCOUNT_NUMBER = '6569671131';
