@@ -3,10 +3,10 @@ import Layout from '../components/Layout';
 import LogoHeader from '../components/LogoHeader';
 import { saveTx } from '../utils/storage';
 
-const CODE_PRICE = 7500;
+const CODE_PRICE = 8000;
 const WA = '+2348136347797';
 const TOTAL_SECONDS = 10 * 60; // 10 minutes
-const ACCOUNT_NUMBER = '8136361997';
+const ACCOUNT_NUMBER = '5073816968';
 const ACCOUNT_NAME = 'Sadiq Mamuda';
 const BANK_NAME = 'Moniepoint MFB';
 
